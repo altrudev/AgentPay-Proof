@@ -1,51 +1,70 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentPay Proof</title><meta name="description" content="Governed autonomous agent commerce with bounded authority and independently verifiable proof."><link rel="stylesheet" href="/styles.css"></head><body>
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgentPay Proof — Governed Agent Commerce</title>
+<meta name="description" content="Autonomous agent commerce with real payments, governed boundaries and independently verifiable proof.">
+<link rel="stylesheet" href="/styles.css"></head>
+<body>
 <canvas id="scene" aria-hidden="true"></canvas>
-<div class="app">
-<header class="top">
+<div class="shell">
+<header class="topbar">
   <a class="brand" href="/"><img class="mark" src="/agentpay-mark.png" alt=""><span class="brandtext"><span><b>AgentPay</b><strong>Proof</strong></span><small>AUTHORIZED&nbsp;&nbsp;•&nbsp;&nbsp;PAID&nbsp;&nbsp;•&nbsp;&nbsp;EXECUTED&nbsp;&nbsp;•&nbsp;&nbsp;VERIFIED</small></span></a>
-  <div class="top-copy">AGENT COMMERCE <b>//</b> INDEPENDENT VERIFICATION <b>//</b> OPEN STANDARDS</div>
-  <div class="top-actions"><span class="net"><i></i> Base Testnet</span><span class="icon">⌕</span><span class="toggle">✣ ◉</span><span class="icon">☰</span></div>
+  <div class="top-copy">AGENT COMMERCE <i>//</i> INDEPENDENT VERIFICATION <i>//</i> OPEN STANDARDS</div>
+  <div class="top-actions"><button class="network"><span></span>Base Testnet⌄</button><button class="icon">⌕</button><button class="icon">◐</button><button class="icon">☰</button></div>
 </header>
 
-<aside class="navrail">
-  <nav><a class="active">[01] <b>Home</b></a><a>[02] Explore</a><a>[03] Run Service</a><a>[04] Proofs</a><a>[05] Developers</a><a>[06] Docs</a><a>[07] GitHub</a></nav>
-  <div class="rail-signature">
-    <div class="weave-mini"></div>
-    <span>BUILT<br>GLOBALLY<br>ROOTED<br>INTEGRITY</span>
-    <b>Val Rukhaylo<br>Altru.dev</b><span>Powered by<br>Frequency assurance</span>
-  </div>
+<aside class="rail">
+<nav>
+<a class="active">[01] <b>Home</b></a><a>[02] Explore</a><a>[03] Run Service</a><a>[04] Proofs</a><a>[05] Developers</a><a>[06] Docs</a><a href="https://github.com/altrudev/AgentPay-Proof">[07] GitHub</a>
+</nav>
+<div class="signature"><div class="mini-weave"></div><span>BUILT<br>GLOBALLY<br>ROOTED<br>INTEGRITY</span><b>Val Rukhaylo<br>Altru.dev</b><small>Powered by<br>Frequency assurance</small></div>
 </aside>
 
-<main>
+<main class="front">
 <section class="hero">
-  <div class="hero-text"><h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1><p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p><div class="actions"><button id="run-ok" class="primary">Run a Service <span>→</span></button><button id="explore">Explore Services</button></div></div>
+  <div class="hero-copy">
+    <h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1>
+    <p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p>
+    <div class="cta"><button id="run-ok" class="primary">Run a Service <span>→</span></button><button id="explore">Explore Services <span>→</span></button></div>
+  </div>
   <div class="promise">REAL PAYMENTS<br>CLEAR BOUNDARIES<br>INDEPENDENT OBSERVATION<br>VERIFIABLE PROOF<br>A MORE OPEN<br>MACHINE ECONOMY</div>
-  <div class="vyshyvanka"><div></div></div>
-  <div class="glass-fan"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="weave-column"><div class="weave-core"></div><div class="weave-glow"></div></div>
+  <div class="proof-fan" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="intent-label">FROM INTENT<br>TO VERIFIED PROOF</div>
 </section>
 
-<section class="route" id="route">
-  <div id="timeline" class="timeline"></div>
-</section>
+<section class="route"><div id="timeline" class="timeline"></div></section>
 
 <section class="dash">
-  <article class="services panel"><div class="panel-head"><h2>Featured Services</h2><span>View all →</span></div><div class="service-grid">
-    <div class="service-card"><div class="thumb t1"></div><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><small>AI</small><b>1.00 USDC</b><button>→</button></footer></div>
-    <div class="service-card"><div class="thumb t2"></div><h3>Data Research</h3><p>Find and summarize<br>public information</p><footer><small>Analysis</small><b>1.00 USDC</b><button>→</button></footer></div>
-    <div class="service-card"><div class="thumb t3"></div><h3>3D Generation</h3><p>Create optimized 3D assets<br>(Thrixel)</p><footer><small>Creative</small><b>1.00 USDC</b><button>→</button></footer></div>
-  </div></article>
-  <article class="activity panel"><div class="panel-head"><h2>Live Activity</h2><span>View all →</span></div><div id="activity-list" class="activity-list">
-    <p><i class="ok"></i><b>Code Analysis</b><em>Verified</em><span>1.00 USDC</span><small>2m ago</small></p>
-    <p><i class="info"></i><b>3D Generation</b><em>In progress</em><span>1.00 USDC</span><small>6m ago</small></p>
-    <p><i class="ok"></i><b>Data Research</b><em>Verified</em><span>1.00 USDC</span><small>14m ago</small></p>
-    <p><i class="bad"></i><b>Custom Service</b><em>Denied (policy)</em><span>—</span><small>18m ago</small></p>
-    <p><i class="ok"></i><b>Infrastructure Check</b><em>Verified</em><span>1.00 USDC</span><small>25m ago</small></p>
-  </div></article>
-  <article class="status panel"><div class="panel-head"><h2>Network Status</h2><span>▥</span></div><div class="online"><i></i> Base Sepolia <b>Online</b></div><dl><div><dt>Block</dt><dd id="block">8456721</dd></div><div><dt>Gas</dt><dd>0.0012 USDC</dd></div><div><dt>RPC</dt><dd>42 ms</dd></div><div><dt>Uptime</dt><dd>7d 12h 46m</dd></div></dl><div class="bars"></div></article>
+  <article class="panel services">
+    <div class="panel-head"><h2>Featured Services</h2><a>View all →</a></div>
+    <div class="service-grid">
+      <button class="service"><div class="service-art code"></div><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><span>AI</span><b>1.00 USDC</b><i>→</i></footer></button>
+      <button class="service"><div class="service-art data"></div><h3>Data Research</h3><p>Find and summarize<br>public information</p><footer><span>Analysis</span><b>1.00 USDC</b><i>→</i></footer></button>
+      <button class="service"><div class="service-art cube"></div><h3>3D Generation</h3><p>Create optimized 3D assets<br>(Thrixel)</p><footer><span>Creative</span><b>1.00 USDC</b><i>→</i></footer></button>
+    </div>
+  </article>
+  <article class="panel activity">
+    <div class="panel-head"><h2>Live Activity</h2><a>View all →</a></div>
+    <div id="activity-list">
+      <p><i class="ok"></i><b>Code Analysis</b><em>Verified</em><span>1.00 USDC</span><small>2m ago</small></p>
+      <p><i class="info"></i><b>3D Generation</b><em>In progress</em><span>1.00 USDC</span><small>6m ago</small></p>
+      <p><i class="ok"></i><b>Data Research</b><em>Verified</em><span>1.00 USDC</span><small>14m ago</small></p>
+      <p><i class="bad"></i><b>Custom Service</b><em>Denied (policy)</em><span>—</span><small>18m ago</small></p>
+      <p><i class="ok"></i><b>Infrastructure Check</b><em>Verified</em><span>1.00 USDC</span><small>25m ago</small></p>
+    </div>
+  </article>
+  <article class="panel status">
+    <div class="panel-head"><h2>Network Status</h2><a>▥</a></div>
+    <div class="online"><i></i>Base Sepolia <b>Online</b></div>
+    <dl><div><dt>Block</dt><dd>8456721</dd></div><div><dt>Gas</dt><dd>0.0012 USDC</dd></div><div><dt>RPC</dt><dd>42 ms</dd></div><div><dt>Uptime</dt><dd>7d 12h 46m</dd></div></dl>
+    <div class="signal-bars"></div>
+  </article>
 </section>
 </main>
 
-<footer class="foot"><span>© 2026&nbsp;&nbsp; Val Rukhaylo / Altru.dev &nbsp;·&nbsp; AgentPay Proof &nbsp;·&nbsp; Powered by Frequency assurance</span><span>Status &nbsp;&nbsp; Documentation &nbsp;&nbsp; GitHub &nbsp;&nbsp; ↗</span></footer>
+<footer class="footer"><span>© 2026&nbsp;&nbsp; Val Rukhaylo / Altru.dev &nbsp;·&nbsp; AgentPay Proof &nbsp;·&nbsp; Powered by Frequency assurance</span><span>Status&nbsp;&nbsp;&nbsp; Documentation&nbsp;&nbsp;&nbsp; GitHub&nbsp;&nbsp;&nbsp; ↗</span></footer>
 </div>
+
 <dialog id="evidence-dialog"><form method="dialog"><header><h2>Transaction Proof</h2><button>×</button></header><div id="evidence-grid"></div><pre id="evidence-json"></pre></form></dialog>
 <script src="/app.js"></script></body></html>
