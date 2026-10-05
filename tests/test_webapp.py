@@ -23,6 +23,19 @@ class WebAppTests(unittest.TestCase):
         tampered = tamper_demo(out["proof"])
         self.assertEqual(tampered["verification"]["verdict"], "NOT VERIFIED")
 
+    def test_logo_asset_is_served(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{server.server_port}/agentpay-logo.webp") as r:
+                self.assertEqual(r.status, 200)
+                self.assertEqual(r.headers["content-type"], "image/webp")
+                self.assertGreater(int(r.headers["content-length"]), 1000)
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_http_head_for_home(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
