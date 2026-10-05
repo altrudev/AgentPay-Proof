@@ -1,104 +1,51 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AgentPay Proof — Governed agent commerce</title>
-<meta name="description" content="Autonomous agent commerce with bounded authority and independently verifiable proof.">
-<link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-<canvas id="flow-canvas" aria-hidden="true"></canvas>
-<header class="topbar">
-  <a class="logo-slab" href="/" aria-label="AgentPay Proof home">
-    <span class="logo-mark-crop"><img src="/agentpay-logo.webp" alt=""></span>
-    <span class="logo-lockup"><span class="logo-word-crop"><img src="/agentpay-logo.webp" alt="AgentPay Proof"></span><span class="logo-tag-crop"><img src="/agentpay-logo.webp" alt="Authorized, Paid, Executed, Verified"></span></span>
-  </a>
-  <nav class="topnav" aria-label="Primary">
-    <a class="active" href="#">[01] HOME</a><a href="#route">[02] ROUTE</a><a href="#proof">[03] PROOF</a><a href="https://github.com/altrudev/AgentPay-Proof">[04] GITHUB</a>
-  </nav>
-  <div class="top-status"><span class="network"><i></i> DEMO · BASE</span><span class="frequency">FREQUENCY // ASSURED</span></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentPay Proof</title><meta name="description" content="Governed autonomous agent commerce with bounded authority and independently verifiable proof."><link rel="stylesheet" href="/styles.css"></head><body>
+<canvas id="scene" aria-hidden="true"></canvas>
+<div class="app">
+<header class="top">
+  <a class="brand" href="/"><img src="/agentpay-logo-transparent.png" alt="AgentPay Proof"></a>
+  <div class="top-copy">AGENT COMMERCE <b>//</b> INDEPENDENT VERIFICATION <b>//</b> OPEN STANDARDS</div>
+  <div class="top-actions"><span class="net"><i></i> Base Testnet</span><span class="icon">⌕</span><span class="toggle">✣ ◉</span><span class="icon">☰</span></div>
 </header>
 
-<main class="screen">
-  <aside class="rail">
-    <div class="rail-menu">
-      <span class="rail-title">// AGENT PAY</span>
-      <span>AUTHORITY</span><span>SETTLEMENT</span><span>EXECUTION</span><span>OBSERVATION</span><span>PROOF</span>
-    </div>
-    <div class="rail-credit"><b>VAL RUKHAYLO</b><span>ALTRU.DEV</span><span>INDEPENDENT BUILDER</span></div>
-  </aside>
+<aside class="navrail">
+  <nav><a class="active">[01] <b>Home</b></a><a>[02] Explore</a><a>[03] Run Service</a><a>[04] Proofs</a><a>[05] Developers</a><a>[06] Docs</a><a>[07] GitHub</a></nav>
+  <div class="rail-signature">
+    <div class="weave-mini"></div>
+    <span>BUILT<br>GLOBALLY<br>ROOTED<br>INTEGRITY</span>
+    <b>Val Rukhaylo<br>Altru.dev</b><span>Powered by<br>Frequency assurance</span>
+  </div>
+</aside>
 
-  <section class="stage">
-    <div class="hero-copy">
-      <p class="kicker">// GOVERNED AGENT COMMERCE</p>
-      <h1>LET AGENTS PAY.<br>KEEP AUTHORITY <em>VERIFIABLE.</em></h1>
-      <p class="sub">Real value. Clear boundaries. Independent proof.</p>
-      <div class="hero-actions"><button id="run-ok" class="btn primary">RUN AUTHORIZED PURCHASE →</button><button id="run-deny" class="btn ghost">TRIGGER DENIAL</button></div>
-    </div>
+<main>
+<section class="hero">
+  <div class="hero-text"><h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1><p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p><div class="actions"><button id="run-ok" class="primary">Run a Service <span>→</span></button><button id="explore">Explore Services</button></div></div>
+  <div class="promise">REAL PAYMENTS<br>CLEAR BOUNDARIES<br>INDEPENDENT OBSERVATION<br>VERIFIABLE PROOF<br>A MORE OPEN<br>MACHINE ECONOMY</div>
+  <div class="vyshyvanka"><div></div></div>
+  <div class="glass-fan"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</section>
 
-    <div class="data-river" aria-hidden="true">
-      <span class="tag t1">SERVICES</span><span class="tag t2">POLICY</span><span class="tag t3">PAYMENTS</span><span class="tag t4">EVIDENCE</span>
-      <div class="panel p1"></div><div class="panel p2"></div><div class="panel p3"></div><div class="panel p4"></div>
-    </div>
+<section class="route" id="route">
+  <div id="timeline" class="timeline"></div>
+</section>
 
-    <div class="vyshyvanka-spine" aria-hidden="true"><div class="weave"></div></div>
-
-    <section id="route" class="route">
-      <div class="route-title"><span>TRANSACTION ROUTE</span><small>INTENT → VERIFIED PROOF</small></div>
-      <div id="timeline" class="timeline"></div>
-    </section>
-  </section>
-
-  <aside id="proof" class="proof-monitor">
-    <div class="monitor-head"><span>LIVE PROOF</span><b id="monitor-state">READY</b></div>
-    <div class="proof-hash" id="monitor-root">awaiting transaction</div>
-    <div class="checks" id="monitor-checks">
-      <div><i></i><span>Authority valid</span></div>
-      <div><i></i><span>Payment observed</span></div>
-      <div><i></i><span>Service executed</span></div>
-      <div><i></i><span>Independent observer</span></div>
-      <div><i></i><span>Proof matches</span></div>
-    </div>
-    <button id="open-evidence" class="view-proof" disabled>VIEW FULL EVIDENCE →</button>
-    <div class="facts">
-      <div><span>MODE</span><b>DEMO</b></div><div><span>NETWORK</span><b>BASE</b></div>
-      <div><span>LIMIT</span><b>$1.00 USDC</b></div><div><span>POLICY</span><b>BOUND</b></div>
-    </div>
-  </aside>
-
-  <section class="bottom-grid">
-    <article class="data-card boundary">
-      <div class="card-head"><span>// AUTHORITY ENVELOPE</span><b>ACTIVE</b></div>
-      <div class="big-value">$1.00 <small>USDC</small></div>
-      <div class="micro-grid"><span>Service<b>Document Summary</b></span><span>Recipient<b>Quote-bound</b></span><span>Expiry<b>5 min</b></span><span>Decision<b id="decision-value">WAITING</b></span></div>
-    </article>
-
-    <article class="data-card activity">
-      <div class="card-head"><span>// EVIDENCE BUS</span><b id="bus-state">IDLE</b></div>
-      <div id="bus-lines" class="bus-lines">
-        <p><span>00</span> intent channel armed</p><p><span>01</span> quote channel armed</p><p><span>02</span> authority gate waiting</p><p><span>03</span> observer waiting</p>
-      </div>
-    </article>
-
-    <article class="data-card manifesto">
-      <div class="card-head"><span>// WHY THIS MATTERS</span><b>OPEN</b></div>
-      <h2>A PAYMENT RECEIPT<br>IS NOT AUTHORITY.</h2>
-      <p>Blockchain proves value moved. AgentPay Proof proves what was allowed, what happened, and what an independent observer can verify.</p>
-    </article>
-  </section>
+<section class="dash">
+  <article class="services panel"><div class="panel-head"><h2>Featured Services</h2><span>View all →</span></div><div class="service-grid">
+    <div class="service-card"><div class="thumb t1"></div><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><small>AI</small><b>1.00 USDC</b><button>→</button></footer></div>
+    <div class="service-card"><div class="thumb t2"></div><h3>Data Research</h3><p>Find and summarize<br>public information</p><footer><small>Analysis</small><b>1.00 USDC</b><button>→</button></footer></div>
+    <div class="service-card"><div class="thumb t3"></div><h3>3D Generation</h3><p>Create optimized 3D assets<br>(Thrixel)</p><footer><small>Creative</small><b>1.00 USDC</b><button>→</button></footer></div>
+  </div></article>
+  <article class="activity panel"><div class="panel-head"><h2>Live Activity</h2><span>View all →</span></div><div id="activity-list" class="activity-list">
+    <p><i class="ok"></i><b>Code Analysis</b><em>Verified</em><span>1.00 USDC</span><small>2m ago</small></p>
+    <p><i class="info"></i><b>3D Generation</b><em>In progress</em><span>1.00 USDC</span><small>6m ago</small></p>
+    <p><i class="ok"></i><b>Data Research</b><em>Verified</em><span>1.00 USDC</span><small>14m ago</small></p>
+    <p><i class="bad"></i><b>Custom Service</b><em>Denied (policy)</em><span>—</span><small>18m ago</small></p>
+    <p><i class="ok"></i><b>Infrastructure Check</b><em>Verified</em><span>1.00 USDC</span><small>25m ago</small></p>
+  </div></article>
+  <article class="status panel"><div class="panel-head"><h2>Network Status</h2><span>▥</span></div><div class="online"><i></i> Base Sepolia <b>Online</b></div><dl><div><dt>Block</dt><dd id="block">8456721</dd></div><div><dt>Gas</dt><dd>0.0012 USDC</dd></div><div><dt>RPC</dt><dd>42 ms</dd></div><div><dt>Uptime</dt><dd>7d 12h 46m</dd></div></dl><div class="bars"></div></article>
+</section>
 </main>
 
-<footer><span>© 2026 Val Rukhaylo / Altru.dev</span><span>Powered by Frequency assurance · Controlled demo settlement is never represented as on-chain.</span></footer>
-
-<dialog id="evidence-dialog">
-  <form method="dialog" class="evidence-dialog-inner">
-    <header><div><p class="kicker">// FULL EVIDENCE</p><h2>TRANSACTION PROOF</h2></div><button class="close" aria-label="Close">×</button></header>
-    <div id="evidence-grid" class="evidence-grid"></div>
-    <div class="dialog-actions"><button type="button" id="download-proof" class="btn ghost">DOWNLOAD JSON</button><button type="button" id="tamper-proof" class="btn ghost">TAMPER WITH COPY</button></div>
-    <pre id="evidence-json"></pre>
-  </form>
-</dialog>
-<script src="/app.js"></script>
-</body>
-</html>
+<footer class="foot"><span>© 2026&nbsp;&nbsp; Val Rukhaylo / Altru.dev &nbsp;·&nbsp; AgentPay Proof &nbsp;·&nbsp; Powered by Frequency assurance</span><span>Status &nbsp;&nbsp; Documentation &nbsp;&nbsp; GitHub &nbsp;&nbsp; ↗</span></footer>
+</div>
+<dialog id="evidence-dialog"><form method="dialog"><header><h2>Transaction Proof</h2><button>×</button></header><div id="evidence-grid"></div><pre id="evidence-json"></pre></form></dialog>
+<script src="/app.js"></script></body></html>

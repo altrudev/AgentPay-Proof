@@ -1,175 +1,24 @@
-const stages=[
-["01","Intent","Agent requests a service"],
-["02","Quote","Price + allowed scope"],
-["03","Authority","Policy + limits"],
-["04","Settlement","USDC on Base"],
-["05","Execution","Service runs"],
-["06","Observation","Independent check"],
-["07","Proof","Evidence verified"]
-];
-let currentProof=null,currentOutcome=null;
+const stages=[["01","Intent","Agent requests a service","▤"],["02","Quote","Get price and allowed scope","⌘"],["03","Authority","Verify policy and limits","⬡"],["04","Settlement","USDC transaction on Base","≋"],["05","Execution","Service runs in boundary","</>"],["06","Observation","Independent verification","◉"],["07","Proof","Get verifiable evidence","#"]];
+let currentProof=null;
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-const short=(v,n=24)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
-
-function drawTimeline(mode="idle"){
-  $("#timeline").innerHTML=stages.map((s,i)=>{
-    let cls="route-step";
-    if(mode==="ok") cls+=" pass";
-    if(mode==="deny"){if(i<2)cls+=" pass";else if(i===2)cls+=" denied";}
-    return '<article class="'+cls+'"><div class="orb"><span>'+s[0]+'</span></div><small>['+s[0]+']</small><b>'+s[1]+'</b><p>'+s[2]+'</p></article>';
-  }).join("");
-}
-drawTimeline();
-
-function setChecks(mode,p){
-  const items=[...$("#monitor-checks").children];
-  items.forEach(x=>x.className="");
-  $("#monitor-state").style.color="";
-  $("#open-evidence").disabled=mode==="idle";
-  if(mode==="idle"){
-    $("#monitor-state").textContent="READY";
-    $("#monitor-root").textContent="awaiting transaction";
-    $("#decision-value").textContent="WAITING";
-    $("#bus-state").textContent="IDLE";
-    return;
-  }
-  if(mode==="deny"){
-    $("#monitor-state").textContent="DENIED";
-    $("#monitor-state").style.color="var(--red)";
-    $("#monitor-root").textContent=short(p?.proof_hash||"policy denied",30);
-    items[0].className="fail";
-    $("#decision-value").textContent="DENY";
-    $("#bus-state").textContent="STOPPED";
-    return;
-  }
-  $("#monitor-state").textContent="VERIFIED";
-  $("#monitor-state").style.color="var(--green)";
-  $("#monitor-root").textContent=short(p?.proof_hash,30);
-  items.forEach(x=>x.className="pass");
-  $("#decision-value").textContent="PERMIT";
-  $("#bus-state").textContent="VERIFIED";
-}
-
-function busUpdate(p,denied){
-  const lines=denied?[
-    ["00","intent captured"],
-    ["01","quote received"],
-    ["02","authority denied"],
-    ["03","settlement channel never opened"]
-  ]:[
-    ["00","intent "+short(p.intent?.intent_id,18)],
-    ["01","quote "+short(p.quote?.quote_id,18)],
-    ["02","authority PERMIT"],
-    ["03","proof "+short(p.proof_hash,18)]
-  ];
-  $("#bus-lines").innerHTML=lines.map(x=>'<p><span>'+esc(x[0])+'</span>'+esc(x[1])+'</p>').join("");
-}
-
-async function run(amount){
-  document.body.classList.add("busy");
-  drawTimeline();
-  setChecks("idle");
-  $("#bus-lines").innerHTML='<p><span>..</span> evaluating request</p><p><span>..</span> checking policy</p><p><span>..</span> waiting for decision</p>';
-  try{
-    const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
-      amount_atomic:amount,
-      document:"Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims."
-    })});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||"request failed");
-    currentOutcome=d;currentProof=d.proof;
-    const denied=d.status==="DENIED";
-    drawTimeline(denied?"deny":"ok");
-    setChecks(denied?"deny":"ok",d.proof);
-    busUpdate(d.proof,denied);
-  }catch(e){
-    $("#monitor-state").textContent="ERROR";$("#monitor-state").style.color="var(--red)";
-    $("#bus-lines").innerHTML='<p><span>!!</span>'+esc(e.message)+'</p>';
-  }finally{document.body.classList.remove("busy")}
-}
-
-function evidenceCards(p){
-  const rows=[
-    ["INTENT",p.intent?.intent_id,p.intent?.request_digest],
-    ["QUOTE",p.quote?.quote_id,p.quote?.digest],
-    ["AUTHORITY",p.authority?.decision,p.authority?.reason],
-    ["SETTLEMENT",p.settlement?.transaction_hash,p.settlement?.status],
-    ["EXECUTION",p.result?.result_digest,p.result?.status],
-    ["OBSERVATION",p.observation?.observer_id,p.observation?.verdict],
-    ["PROOF",p.proof_hash,"portable verification root"]
-  ];
-  return rows.filter(r=>r[1]!=null).map(r=>'<article class="evidence-card"><small>'+esc(r[0])+'</small><strong title="'+esc(r[1])+'">'+esc(short(r[1],24))+'</strong><p>'+esc(r[2]||"")+'</p></article>').join("");
-}
-function openEvidence(){
-  if(!currentProof)return;
-  $("#evidence-grid").innerHTML=evidenceCards(currentProof);
-  $("#evidence-json").textContent=JSON.stringify(currentProof,null,2);
-  $("#tamper-proof").style.display=currentProof.settlement?"inline-block":"none";
-  $("#evidence-dialog").showModal();
-}
-function downloadProof(){
-  if(!currentProof)return;
-  const b=new Blob([JSON.stringify(currentProof,null,2)],{type:"application/json"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="agentpay-proof.json";a.click();URL.revokeObjectURL(a.href);
-}
-async function tamperProof(){
-  const r=await fetch("/api/tamper",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({proof:currentProof})});
-  const d=await r.json();
-  $("#evidence-json").textContent=JSON.stringify(d,null,2);
-  $("#monitor-state").textContent="NOT VERIFIED";$("#monitor-state").style.color="var(--red)";
-  const items=[...$("#monitor-checks").children];items.forEach(x=>x.className="fail");
-  $("#bus-state").textContent="TAMPER DETECTED";
-}
-
-$("#run-ok").onclick=()=>run(250000);
-$("#run-deny").onclick=()=>run(2000000);
-$("#open-evidence").onclick=openEvidence;
-$("#download-proof").onclick=downloadProof;
-$("#tamper-proof").onclick=tamperProof;
-
-/* Continuous data river with no loop boundary: particles wrap independently. */
+const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
+function draw(mode="idle"){ $("#timeline").innerHTML=stages.map((s,i)=>{let c="step";if(mode==="ok")c+=" pass";if(mode==="deny"){if(i<2)c+=" pass";else if(i===2)c+=" denied"}return '<article class="'+c+'"><div class="step-icon">'+s[3]+'</div><small>['+s[0]+']</small><b>'+s[1]+'</b><p>'+s[2]+'</p></article>'}).join("")} draw();
+async function run(amount){try{const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({amount_atomic:amount,document:"Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims."})});const d=await r.json();if(!r.ok)throw new Error(d.error||"request failed");currentProof=d.proof;const denied=d.status==="DENIED";draw(denied?"deny":"ok");const list=$("#activity-list");const row=document.createElement("p");row.innerHTML='<i class="'+(denied?"bad":"ok")+'"></i><b>AgentPay Demo</b><em>'+(denied?"Denied (policy)":"Verified")+'</em><span>'+(denied?"—":"0.25 USDC")+'</span><small>now</small>';list.prepend(row);while(list.children.length>5)list.lastElementChild.remove();if(!denied)openEvidence()}catch(e){console.error(e)}}
+function openEvidence(){if(!currentProof)return;const p=currentProof,rows=[["Intent",p.intent?.intent_id],["Quote",p.quote?.quote_id],["Authority",p.authority?.decision],["Settlement",p.settlement?.transaction_hash],["Execution",p.result?.result_digest],["Observation",p.observation?.observer_id],["Proof",p.proof_hash]];$("#evidence-grid").innerHTML=rows.filter(x=>x[1]).map(x=>'<article><small>'+esc(x[0])+'</small><div>'+esc(short(x[1],22))+'</div></article>').join("");$("#evidence-json").textContent=JSON.stringify(p,null,2);$("#evidence-dialog").showModal()}
+$("#run-ok").onclick=()=>run(250000);$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 36px rgba(21,151,255,.35)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 (()=>{
-  const c=$("#flow-canvas"),ctx=c.getContext("2d",{alpha:true});
-  let w=0,h=0,dpr=1,start=performance.now(),parts=[];
-  function seeded(i){const x=Math.sin(i*999.91)*43758.5453;return x-Math.floor(x)}
-  function resize(){
-    dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;
-    c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.width=w+"px";c.style.height=h+"px";ctx.setTransform(dpr,0,0,dpr,0,0);
-    const count=Math.max(70,Math.min(160,Math.floor(w/9)));
-    parts=Array.from({length:count},(_,i)=>({
-      base:seeded(i+1)*(w+240)-120,
-      lane:(seeded(i+91)-.5)*150,
-      speed:24+seeded(i+211)*70,
-      size:.6+seeded(i+321)*1.5,
-      phase:seeded(i+401)*Math.PI*2
-    }));
-  }
-  function pathY(x,t,lane){
-    return h*.43+Math.sin(x*.006+t*.00042)*34+Math.sin(x*.013-t*.00019)*10+lane;
-  }
-  function frame(now){
-    const elapsed=(now-start)/1000;
-    ctx.clearRect(0,0,w,h);
-    for(let k=-2;k<=2;k++){
-      ctx.beginPath();
-      for(let x=-30;x<=w+30;x+=16){
-        const y=pathY(x,now,k*13);
-        if(x===-30)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-      }
-      const a=k===0?.24:.08;
-      ctx.strokeStyle=k===0?"rgba(190,232,255,"+a+")":"rgba(40,145,255,"+a+")";
-      ctx.lineWidth=k===0?1.4:.7;ctx.stroke();
-    }
-    for(const p of parts){
-      const span=w+260;
-      const x=((p.base+elapsed*p.speed+120)%span)-120;
-      const y=pathY(x,now,p.lane*.32+Math.sin(p.phase+elapsed*.7)*10);
-      ctx.fillStyle=p.size>1.5?"rgba(220,244,255,.62)":"rgba(40,145,255,.38)";
-      ctx.fillRect(x,y,p.size*1.6,p.size*1.6);
-    }
-    requestAnimationFrame(frame);
-  }
-  addEventListener("resize",resize,{passive:true});resize();
-  if(!matchMedia("(prefers-reduced-motion: reduce)").matches)requestAnimationFrame(frame);
+ const c=$("#scene"),x=c.getContext("2d"),parts=[],stars=[];let w,h,dpr=1,start=performance.now();
+ function rnd(i){const n=Math.sin(i*991.7)*43758.5453;return n-Math.floor(n)}
+ function resize(){dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;c.width=w*dpr;c.height=h*dpr;c.style.width=w+"px";c.style.height=h+"px";x.setTransform(dpr,0,0,dpr,0,0);parts.length=0;stars.length=0;for(let i=0;i<220;i++)parts.push({b:rnd(i)*(w+300)-150,y:(rnd(i+80)-.5)*120,s:20+rnd(i+160)*95,z:.4+rnd(i+240)*1.4,p:rnd(i+320)*6.28});for(let i=0;i<420;i++)stars.push({x:rnd(i+600)*w,y:rnd(i+900)*h*.78,a:.12+rnd(i+1100)*.45,z:.4+rnd(i+1300)*1.4})}
+ function riverY(px,t,l=0){return h*.43+Math.sin(px*.006+t*.00032)*44+Math.sin(px*.013-t*.00018)*16+l}
+ function frame(now){x.clearRect(0,0,w,h);
+  const bg=x.createLinearGradient(0,0,0,h);bg.addColorStop(0,"#07131f");bg.addColorStop(1,"#030911");x.fillStyle=bg;x.fillRect(0,0,w,h);
+  // digital terrain
+  for(let k=0;k<7;k++){x.beginPath();for(let px=180;px<w;px+=14){let y=h*.34+Math.sin(px*.007+k)*18+Math.sin(px*.021-k*.7)*6+k*12;if(px===180)x.moveTo(px,y);else x.lineTo(px,y)}x.strokeStyle="rgba(46,111,166,"+(0.06+k*.008)+")";x.lineWidth=.8;x.stroke()}
+  for(const s of stars){x.fillStyle="rgba(50,160,255,"+s.a+")";x.fillRect(s.x,s.y,s.z,s.z)}
+  for(let k=-3;k<=3;k++){x.beginPath();for(let px=180;px<w+40;px+=10){let y=riverY(px,now,k*9);if(px===180)x.moveTo(px,y);else x.lineTo(px,y)}x.strokeStyle=k===0?"rgba(220,245,255,.75)":"rgba(28,145,255,"+(0.16-Math.abs(k)*.018)+")";x.lineWidth=k===0?2.2:1;x.stroke()}
+  const elapsed=(now-start)/1000;for(const p of parts){const span=w+300,px=((p.b+elapsed*p.s+150)%span)-150,py=riverY(px,now,p.y*.35+Math.sin(elapsed+p.p)*7);x.fillStyle=p.z>1.1?"rgba(225,246,255,.78)":"rgba(29,145,255,.55)";x.fillRect(px,py,p.z*1.7,p.z*1.7)}
+  requestAnimationFrame(frame)}
+ addEventListener("resize",resize,{passive:true});resize();requestAnimationFrame(frame)
 })();

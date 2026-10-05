@@ -70,13 +70,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             return self._json(200, {"ok": True, "environment": "DEMO"})
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp"}:
+        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png"}:
             return self._json(404, {"error": "not-found"})
         target = WEB / name
         if not target.exists():
             return self._json(404, {"error": "not-found"})
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp"}:
+        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png"}:
             self.send_response(404)
             self.end_headers()
             return
@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
