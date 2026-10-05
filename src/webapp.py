@@ -86,6 +86,36 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_HEAD(self):
+        path = urlparse(self.path).path
+        if path == "/api/health":
+            body = json.dumps({"ok": True, "environment": "DEMO"}, separators=(",", ":")).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.send_header("cache-control", "no-store")
+            self.send_header("x-content-type-options", "nosniff")
+            self.end_headers()
+            return
+        name = "index.html" if path == "/" else path.lstrip("/")
+        if name not in {"index.html", "app.js", "styles.css"}:
+            self.send_response(404)
+            self.end_headers()
+            return
+        target = WEB / name
+        if not target.exists():
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = target.read_bytes()
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8"}[name.rsplit(".",1)[-1]]
+        self.send_response(200)
+        self.send_header("content-type", mime)
+        self.send_header("content-length", str(len(body)))
+        self.send_header("cache-control", "no-store")
+        self.send_header("x-content-type-options", "nosniff")
+        self.end_headers()
+
     def do_POST(self):
         path = urlparse(self.path).path
         try:

@@ -23,6 +23,19 @@ class WebAppTests(unittest.TestCase):
         tampered = tamper_demo(out["proof"])
         self.assertEqual(tampered["verification"]["verdict"], "NOT VERIFIED")
 
+    def test_http_head_for_home(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            req = Request(f"http://127.0.0.1:{server.server_port}/", method="HEAD")
+            with urlopen(req) as r:
+                self.assertEqual(r.status, 200)
+                self.assertIn("text/html", r.headers["content-type"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_http_health_and_security_headers(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
