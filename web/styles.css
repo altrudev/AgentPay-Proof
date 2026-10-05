@@ -63,3 +63,15 @@ linear-gradient(180deg,transparent 0 68%,rgba(2,9,16,.22) 100%)}
 @media(min-resolution:2dppx){
  .step-icon,.proof-fan span,.panel,.service{border-width:.5px}
 }
+
+/* Approved-mockup fidelity: stronger woven descent into the data river */
+.weave-column{left:64%;width:142px;top:-11%;height:126%;z-index:3;overflow:visible}
+.weave-core{background-size:30px 30px,30px 30px,30px 30px;box-shadow:inset 0 0 0 1px rgba(153,220,255,.12)}
+.weave-column:after{left:6px;bottom:-72px;width:500px;height:170px;transform:rotate(17deg) skewX(-8deg);transform-origin:24px 26px;border-radius:0 0 80% 20%;
+background:
+linear-gradient(45deg,transparent 42%,rgba(247,251,255,.9) 43% 49%,transparent 50% 57%,rgba(18,144,255,.95) 58% 64%,transparent 65%),
+linear-gradient(-45deg,transparent 42%,rgba(247,251,255,.84) 43% 49%,transparent 50% 57%,rgba(18,144,255,.9) 58% 64%,transparent 65%);
+background-size:25px 25px;mask-image:linear-gradient(90deg,#000 0 18%,rgba(0,0,0,.96) 32%,rgba(0,0,0,.72) 55%,transparent 92%);opacity:.88;filter:drop-shadow(0 0 9px rgba(33,162,255,.35))}
+.proof-fan{right:2.3%;top:12%;transform:perspective(700px) rotateY(-8deg)}
+.proof-fan span{width:54px;height:190px}
+.hero-copy{max-width:660px}
