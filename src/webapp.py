@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             return self._json(200, {"ok": True, "environment": "DEMO"})
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png"}:
+        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
             return self._json(404, {"error": "not-found"})
         target = WEB / name
         if not target.exists():
@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png"}:
+        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
             self.send_response(404)
             self.end_headers()
             return
