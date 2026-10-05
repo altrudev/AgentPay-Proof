@@ -26,32 +26,82 @@ $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShado
 
 (()=>{
  const c=$("#scene"),g=c.getContext("2d",{alpha:false});
- let w=0,h=0,dpr=1,start=performance.now(),bits=[],dust=[],mountain=[];
- const rand=i=>{const n=Math.sin(i*127.13+41.7)*43758.5453123;return n-Math.floor(n)};
+ let w=0,h=0,dpr=1,start=performance.now(),bits=[],stars=[],peaks=[];
+ const rand=i=>{const n=Math.sin(i*131.73+17.91)*43758.5453123;return n-Math.floor(n)};
  function resize(){
   dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.width=w+"px";c.style.height=h+"px";g.setTransform(dpr,0,0,dpr,0,0);
-  bits=Array.from({length:520},(_,i)=>({base:rand(i)*(w+360)-180,lane:(rand(i+500)-.5)*210,speed:28+rand(i+900)*115,size:.45+rand(i+1200)*1.65,phase:rand(i+1600)*6.283,tone:rand(i+2000)}));
-  dust=Array.from({length:1100},(_,i)=>({x:rand(i+2400)*w,y:rand(i+3300)*h*.72,a:.04+rand(i+4200)*.46,size:.35+rand(i+5100)*1.55}));
-  mountain=Array.from({length:350},(_,i)=>({x:i/349*w,y:rand(i+6200),j:rand(i+7100)}));
+  bits=Array.from({length:760},(_,i)=>({base:rand(i)*(w+420)-210,lane:(rand(i+700)-.5)*240,speed:28+rand(i+1200)*130,size:.35+rand(i+1800)*1.8,phase:rand(i+2400)*6.283,tone:rand(i+3100)}));
+  stars=Array.from({length:1200},(_,i)=>({x:rand(i+4100)*w,y:rand(i+5200)*h*.7,a:.03+rand(i+6100)*.48,size:.3+rand(i+7000)*1.5}));
+  peaks=Array.from({length:18},(_,i)=>({x:w*(.34+i/17*.66),y:h*(.26+rand(i+8100)*.16),width:55+rand(i+9000)*130,height:40+rand(i+9800)*105,seed:i}));
  }
- function riverY(x,t,lane=0){return h*.43+Math.sin(x*.006+t*.00034)*45+Math.sin(x*.014-t*.00018)*15+lane}
- function ridgeY(x,layer,t){const center=h*(.285+layer*.035);return center+Math.sin(x*.0065+layer*1.9+t*.00007)*25+Math.sin(x*.017-layer*.7)*9+layer*2}
- function drawTerrain(now){
-  const fill=g.createLinearGradient(0,h*.18,0,h*.56);fill.addColorStop(0,"rgba(27,102,165,.02)");fill.addColorStop(1,"rgba(4,31,55,.24)");
-  for(let layer=6;layer>=0;layer--){g.beginPath();g.moveTo(180,h*.57);for(let x=180;x<w+20;x+=10)g.lineTo(x,ridgeY(x,layer,now));g.lineTo(w+20,h*.57);g.closePath();g.fillStyle=fill;g.fill();g.strokeStyle="rgba(62,143,210,"+(0.08+layer*.014)+")";g.lineWidth=.7;g.stroke()}
-  for(const p of mountain){const x=p.x;if(x<180)continue;const y=h*.24+Math.sin(x*.0076)*40+Math.sin(x*.019)*11+p.y*105;g.fillStyle="rgba("+(p.j>.68?"220,242,255":"28,145,240")+","+(0.10+p.j*.44)+")";g.fillRect(x,y,.7+p.j*1.6,.7+p.j*1.6)}
-  for(let x=190;x<w;x+=25){const y=ridgeY(x,4,now)+17;g.strokeStyle="rgba(52,136,204,.12)";g.beginPath();g.moveTo(x,y);g.lineTo(x+85,h*.58);g.stroke()}
+ function riverY(x,t,lane=0){return h*.435+Math.sin(x*.006+t*.00033)*43+Math.sin(x*.014-t*.00017)*16+lane}
+ function drawMountains(now){
+  const left=w*.34,right=w*1.02,base=h*.455;
+  const ridge=[];
+  for(let i=0;i<=84;i++){
+    const x=left+(right-left)*i/84;
+    const n1=Math.sin(i*.63+1.2)*.5+.5,n2=Math.sin(i*.21+2.7)*.5+.5,n3=Math.sin(i*.11+.9)*.5+.5;
+    const peak=Math.pow(Math.max(n1*.62+n2*.27+n3*.11,.05),1.7);
+    const y=base-peak*(h*.20)-Math.sin(i*.09)*h*.025;
+    ridge.push([x,y]);
+  }
+  const layers=[{dy:42,a:.13,stroke:.12},{dy:21,a:.16,stroke:.17},{dy:0,a:.24,stroke:.28}];
+  for(const L of layers){
+    g.beginPath();g.moveTo(left,h*.56);
+    for(const [x,y] of ridge)g.lineTo(x,y+L.dy);
+    g.lineTo(right,h*.56);g.closePath();
+    const grad=g.createLinearGradient(0,h*.18,0,h*.55);grad.addColorStop(0,`rgba(20,79,129,${L.a})`);grad.addColorStop(.72,`rgba(6,32,55,${L.a*.7})`);grad.addColorStop(1,'rgba(2,11,20,.03)');g.fillStyle=grad;g.fill();
+    g.strokeStyle=`rgba(113,197,250,${L.stroke})`;g.lineWidth=L.dy===0?1.15:.65;g.stroke();
+  }
+  g.save();g.globalCompositeOperation='lighter';
+  for(let i=1;i<ridge.length-1;i++){
+    const [x,y]=ridge[i];
+    if(i%3===0){g.strokeStyle='rgba(39,139,214,.11)';g.lineWidth=.55;g.beginPath();g.moveTo(x,y);g.lineTo(x+36,base+65);g.stroke()}
+    const count=i%4===0?5:2;
+    for(let j=0;j<count;j++){
+      const rx=(rand(i*91+j)-.5)*32,ry=rand(i*137+j)*(base-y)*.8;
+      const bright=rand(i*211+j)>.72;
+      g.fillStyle=bright?'rgba(226,246,255,.72)':'rgba(28,148,244,.46)';
+      const z=bright?1.7:1.05;g.fillRect(x+rx,y+ry,z,z)
+    }
+  }
+  g.restore();
+ }
+ function drawTerrainMesh(now){
+  for(let row=0;row<9;row++){
+   g.beginPath();
+   for(let x=180;x<w+25;x+=14){const y=h*(.31+row*.029)+Math.sin(x*.0064+row*1.8+now*.000065)*18+Math.sin(x*.018-row*.7)*6;x===180?g.moveTo(x,y):g.lineTo(x,y)}
+   g.strokeStyle=`rgba(46,127,192,${.04+row*.012})`;g.lineWidth=.6;g.stroke()
+  }
+  for(let x=200;x<w;x+=34){g.strokeStyle='rgba(49,128,190,.055)';g.beginPath();g.moveTo(x,h*.3);g.lineTo(x+110,h*.58);g.stroke()}
+ }
+ function drawWeaveFlow(now){
+  const x0=w*.71,top=h*.055,join=h*.38;
+  g.save();g.globalCompositeOperation='lighter';
+  for(let k=-9;k<=9;k++){
+   const x=x0+k*5.2;
+   g.beginPath();g.moveTo(x,top);
+   g.bezierCurveTo(x+Math.sin(now*.00025+k)*26,h*.18,x-35,h*.29,w*.715,join);
+   g.bezierCurveTo(w*.69,h*.41,w*.74,h*.43,w*.79,h*.455);
+   g.strokeStyle=k%3===0?'rgba(240,249,255,.23)':'rgba(22,149,255,.17)';g.lineWidth=k%3===0?1.25:.72;g.stroke()
+  }
+  g.restore()
  }
  function drawRiver(now,elapsed){
-  for(let k=-9;k<=9;k++){g.beginPath();for(let x=170;x<w+60;x+=9){const y=riverY(x,now,k*7.1);x===170?g.moveTo(x,y):g.lineTo(x,y)}const edge=Math.abs(k)/9,alpha=.055+(1-edge)*.15;g.strokeStyle=k===0?"rgba(245,251,255,.96)":"rgba("+(k%3===0?"92,218,255":"22,147,255")+","+alpha+")";g.lineWidth=k===0?2.5:(k%3===0?1.2:.68);g.stroke()}
-  g.save();g.globalCompositeOperation="lighter";for(const p of bits){const span=w+360,x=((p.base+elapsed*p.speed+180)%span)-180,y=riverY(x,now,p.lane*.42+Math.sin(elapsed*.8+p.phase)*9);g.fillStyle=p.tone>.72?"rgba(232,249,255,.88)":"rgba(30,154,255,.62)";g.fillRect(x,y,p.size*1.85,p.size*1.85);if(p.tone>.92){g.fillStyle="rgba(83,215,255,.17)";g.fillRect(x-2,y-2,p.size*5,p.size*5)}}g.restore()
+  for(let k=-11;k<=11;k++){
+   g.beginPath();for(let x=170;x<w+80;x+=8){const y=riverY(x,now,k*6.4);x===170?g.moveTo(x,y):g.lineTo(x,y)}
+   const edge=Math.abs(k)/11,a=.04+(1-edge)*.16;g.strokeStyle=k===0?'rgba(246,252,255,.97)':`rgba(${k%4===0?'96,220,255':'24,148,255'},${a})`;g.lineWidth=k===0?2.7:(k%4===0?1.2:.6);g.stroke()
+  }
+  g.save();g.globalCompositeOperation='lighter';
+  for(const p of bits){const span=w+420,x=((p.base+elapsed*p.speed+210)%span)-210,y=riverY(x,now,p.lane*.4+Math.sin(elapsed*.75+p.phase)*10);g.fillStyle=p.tone>.76?'rgba(232,249,255,.9)':'rgba(30,154,255,.64)';g.fillRect(x,y,p.size*1.9,p.size*1.9);if(p.tone>.93){g.fillStyle='rgba(91,222,255,.18)';g.fillRect(x-2,y-2,p.size*5,p.size*5)}}
+  g.restore()
  }
- function drawWeaveFeed(now){const x0=w*.69,y0=h*.07;g.save();g.globalCompositeOperation="lighter";for(let k=0;k<15;k++){const x=x0+(k-7)*5.2;g.beginPath();g.moveTo(x,y0);g.bezierCurveTo(x+Math.sin(now*.0003+k)*24,h*.22,x-32,h*.35,w*.72,h*.45);g.strokeStyle="rgba("+(k%3===0?"235,248,255":"29,151,255")+","+(k%3===0?.18:.13)+")";g.lineWidth=k%3===0?1.25:.72;g.stroke()}g.restore()}
  function frame(now){
-  const elapsed=(now-start)/1000,bg=g.createLinearGradient(0,0,0,h);bg.addColorStop(0,"#071825");bg.addColorStop(.55,"#03101b");bg.addColorStop(1,"#020812");g.fillStyle=bg;g.fillRect(0,0,w,h);
-  const glow=g.createRadialGradient(w*.72,h*.28,5,w*.72,h*.28,w*.42);glow.addColorStop(0,"rgba(30,130,218,.2)");glow.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=glow;g.fillRect(0,0,w,h);
-  for(const p of dust){g.fillStyle="rgba(44,155,244,"+p.a+")";g.fillRect(p.x,p.y,p.size,p.size)}
-  drawTerrain(now);drawWeaveFeed(now);drawRiver(now,elapsed);requestAnimationFrame(frame)
+  const elapsed=(now-start)/1000,bg=g.createLinearGradient(0,0,0,h);bg.addColorStop(0,'#071827');bg.addColorStop(.48,'#04111d');bg.addColorStop(1,'#020812');g.fillStyle=bg;g.fillRect(0,0,w,h);
+  const halo=g.createRadialGradient(w*.73,h*.27,10,w*.73,h*.27,w*.43);halo.addColorStop(0,'rgba(37,142,226,.22)');halo.addColorStop(.5,'rgba(14,76,133,.08)');halo.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=halo;g.fillRect(0,0,w,h);
+  for(const p of stars){g.fillStyle=`rgba(43,154,246,${p.a})`;g.fillRect(p.x,p.y,p.size,p.size)}
+  drawMountains(now);drawTerrainMesh(now);drawWeaveFlow(now);drawRiver(now,elapsed);
+  requestAnimationFrame(frame)
  }
- addEventListener("resize",resize,{passive:true});resize();if(!matchMedia("(prefers-reduced-motion: reduce)").matches)requestAnimationFrame(frame)
+ addEventListener('resize',resize,{passive:true});resize();if(!matchMedia('(prefers-reduced-motion: reduce)').matches)requestAnimationFrame(frame)
 })();
