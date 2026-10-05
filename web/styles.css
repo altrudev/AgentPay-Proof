@@ -9,3 +9,57 @@ background-size:34px 34px,34px 34px,34px 34px;background-position:0 0,0 0,0 0}
 linear-gradient(45deg,transparent 43%,rgba(247,251,255,.84) 44% 49%,transparent 50% 57%,rgba(18,144,255,.9) 58% 63%,transparent 64%),
 linear-gradient(-45deg,transparent 43%,rgba(247,251,255,.78) 44% 49%,transparent 50% 57%,rgba(18,144,255,.85) 58% 63%,transparent 64%);
 background-size:28px 28px;mask-image:linear-gradient(90deg,#000 0 22%,rgba(0,0,0,.8) 42%,transparent 100%);opacity:.75;pointer-events:none}
+/* Crisp judge-facing visual pass */
+.step-icon{position:relative;overflow:hidden;background:
+linear-gradient(145deg,rgba(86,168,235,.22),rgba(255,255,255,.055) 42%,rgba(5,19,33,.55));
+border-color:rgba(121,201,255,.58);box-shadow:inset 0 0 0 1px rgba(255,255,255,.035),0 12px 34px rgba(0,0,0,.35)}
+.step-icon:before{content:"";position:absolute;inset:1px;background:
+linear-gradient(120deg,transparent 0 35%,rgba(255,255,255,.11) 36% 37%,transparent 38% 100%);
+pointer-events:none}
+.step-icon svg{width:34px;height:34px;fill:none;stroke:#e9f7ff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 7px rgba(63,199,255,.34))}
+.step.pass .step-icon svg{stroke:#ddfff2}
+.step.denied .step-icon svg{stroke:#ffe6ea}
+.proof-fan span{border-color:rgba(139,211,255,.46);background:
+linear-gradient(145deg,rgba(101,187,250,.17),rgba(255,255,255,.04) 48%,rgba(6,19,33,.35));
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.035),0 0 28px rgba(34,147,233,.11)}
+.proof-fan span:before{content:"";position:absolute;inset:14px 10px;background:
+linear-gradient(90deg,transparent 0 46%,rgba(78,194,255,.24) 47% 52%,transparent 53%),
+linear-gradient(0deg,transparent 0 46%,rgba(78,194,255,.24) 47% 52%,transparent 53%);
+border:1px solid rgba(128,206,255,.18)}
+.proof-fan span:after{content:"";position:absolute;width:8px;height:8px;border:1px solid rgba(225,247,255,.72);left:50%;top:48%;transform:translate(-50%,-50%) rotate(45deg);box-shadow:0 0 12px rgba(79,207,255,.48)}
+.service-art{isolation:isolate;border-bottom:1px solid rgba(113,181,236,.2);background:#071827}
+.service-art:before{z-index:1}
+.service-art:after{z-index:2}
+.service-art.code{background:
+radial-gradient(circle at 78% 48%,rgba(104,224,255,.32),transparent 19%),
+linear-gradient(158deg,#0a263e 0%,#061522 68%)}
+.service-art.code:before{background:
+linear-gradient(160deg,transparent 0 57%,rgba(244,252,255,.78) 58% 59%,transparent 60%),
+repeating-linear-gradient(165deg,transparent 0 9px,rgba(27,148,244,.26) 9px 10px,transparent 10px 18px)}
+.service-art.code:after{background:
+radial-gradient(circle at 18% 60%,rgba(35,155,246,.75) 0 1px,transparent 2px),
+radial-gradient(circle at 42% 28%,rgba(225,247,255,.76) 0 1px,transparent 2px),
+radial-gradient(circle at 68% 72%,rgba(35,155,246,.75) 0 1px,transparent 2px);
+background-size:26px 22px,37px 29px,31px 25px}
+.service-art.data{background:linear-gradient(155deg,#09243c,#05131f)}
+.service-art.data:before{background:
+linear-gradient(30deg,transparent 0 43%,rgba(215,244,255,.35) 44% 45%,transparent 46%),
+linear-gradient(-30deg,transparent 0 43%,rgba(23,146,241,.32) 44% 45%,transparent 46%);
+background-size:38px 38px}
+.service-art.data:after{inset:18px 28px;background:
+linear-gradient(145deg,rgba(139,218,255,.34),rgba(15,89,151,.08));
+border:1px solid rgba(146,218,255,.46);box-shadow:24px -8px 0 -1px rgba(41,142,221,.12),24px -8px 0 0 rgba(146,218,255,.22),-24px 8px 0 -1px rgba(41,142,221,.12),-24px 8px 0 0 rgba(146,218,255,.18)}
+.service-art.cube{background:radial-gradient(circle at 56% 48%,rgba(50,182,255,.22),transparent 28%),linear-gradient(150deg,#09243b,#05131e)}
+.service-art.cube:before{inset:17px 34%;transform:rotate(30deg) skewY(-8deg);background:linear-gradient(145deg,rgba(146,222,255,.28),rgba(11,61,105,.15));border:1px solid rgba(157,224,255,.5);box-shadow:0 0 20px rgba(37,158,244,.18)}
+.service-art.cube:after{background:
+linear-gradient(60deg,transparent 0 48%,rgba(33,150,242,.25) 49% 50%,transparent 51%),
+linear-gradient(-60deg,transparent 0 48%,rgba(33,150,242,.18) 49% 50%,transparent 51%);
+background-size:26px 26px}
+.weave-column{filter:drop-shadow(0 0 14px rgba(27,151,255,.26))}
+.weave-glow{filter:blur(10px)}
+.hero:after{content:"";position:absolute;inset:0;pointer-events:none;background:
+radial-gradient(ellipse at 76% 54%,rgba(70,177,255,.07),transparent 30%),
+linear-gradient(180deg,transparent 0 68%,rgba(2,9,16,.22) 100%)}
+@media(min-resolution:2dppx){
+ .step-icon,.proof-fan span,.panel,.service{border-width:.5px}
+}
