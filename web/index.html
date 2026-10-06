@@ -15,13 +15,13 @@
 
 <aside class="rail">
 <nav>
-<a class="active">[01] <b>Home</b></a><a>[02] Explore</a><a>[03] Run Service</a><a>[04] Proofs</a><a>[05] Developers</a><a>[06] Docs</a><a href="https://github.com/altrudev/AgentPay-Proof">[07] GitHub</a>
+<a class="active" href="#home">[01] <b>Home</b></a><a href="#services">[02] Explore</a><a href="#home" id="nav-run">[03] Run Service</a><a href="#proofs" id="nav-proofs">[04] Proofs</a><a href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">[05] Developers</a><a href="https://github.com/altrudev/AgentPay-Proof/tree/main/docs" target="_blank" rel="noopener">[06] Docs</a><a href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">[07] GitHub</a>
 </nav>
 <div class="signature"><div class="mini-weave"></div><span>BUILT<br>GLOBALLY<br>ROOTED<br>INTEGRITY</span><b>Val Rukhaylo<br>Altru.dev</b><small>Powered by<br>Frequency assurance</small></div>
 </aside>
 
 <main class="front">
-<section class="hero">
+<section class="hero" id="home">
   <div class="hero-copy">
     <h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1>
     <p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p>
@@ -36,7 +36,7 @@
 <section class="route"><div id="timeline" class="timeline"></div></section>
 
 <section class="dash">
-  <article class="panel services">
+  <article class="panel services" id="services">
     <div class="panel-head"><h2>Featured Services</h2><a>View all →</a></div>
     <div class="service-grid">
       <button class="service"><div class="service-art code"></div><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><span>AI</span><b>1.00 USDC</b><i>→</i></footer></button>
@@ -44,7 +44,7 @@
       <button class="service"><div class="service-art cube"></div><h3>3D Generation</h3><p>Create optimized 3D assets<br>(Thrixel)</p><footer><span>Creative</span><b>1.00 USDC</b><i>→</i></footer></button>
     </div>
   </article>
-  <article class="panel activity">
+  <article class="panel activity" id="proofs">
     <div class="panel-head"><h2>Activity</h2><a>Current session</a></div>
     <div id="activity-list">
       <p><i class="info"></i><b>Ready</b><em>Demo mode</em><span>—</span><small>now</small></p>
@@ -63,4 +63,5 @@
 </div>
 
 <dialog id="evidence-dialog"><form method="dialog"><header><h2>Transaction Proof</h2><button>×</button></header><div id="evidence-grid"></div><pre id="evidence-json"></pre></form></dialog>
+<dialog id="status-dialog"><form method="dialog"><header><h2 id="status-title">AgentPay Status</h2><button>×</button></header><p id="status-message"></p><div id="status-actions"></div></form></dialog>
 <script src="/app.js"></script></body></html>
