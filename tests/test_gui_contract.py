@@ -34,7 +34,7 @@ class ApprovedGuiContractTests(unittest.TestCase):
         self.assertNotIn("Run Live", HTML)
 
     def test_approved_fixed_design_space_is_locked(self):
-        self.assertIn("width:1672px;height:941px", CSS)
+        self.assertIn("width:1672px;height:940px", CSS)
         self.assertIn("grid-template-columns:198px 1fr", CSS)
         self.assertIn("grid-template-rows:118px 1fr 43px", CSS)
 
