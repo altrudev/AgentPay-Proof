@@ -7,7 +7,7 @@ const stages=[
 ["06","Observation","Independent verification","eye"],
 ["07","Proof","Get verifiable evidence","hash"]
 ];
-let currentProof=null;
+let currentProof=null;\nlet liveConfig={enabled:false};
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
@@ -44,7 +44,7 @@ function openEvidence(){
  $("#evidence-json").textContent=JSON.stringify(p,null,2);$("#evidence-dialog").showModal()
 }
 $("#run-ok").onclick=()=>run(250000);
-$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
+initRuntime();\n$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 
 (()=>{
  const c=$("#scene"),g=c.getContext("2d",{alpha:false,desynchronized:true});
