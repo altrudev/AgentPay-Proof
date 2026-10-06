@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -12,6 +13,7 @@ from src.model import Settlement
 from src.observer import IndependentObserver
 from src.service import ServiceRequest
 from src.verifier import verify
+from src.settlement import JsonRpcClient, SettlementError
 from src.workflow import AgentPayWorkflow
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -111,6 +113,29 @@ class Handler(BaseHTTPRequestHandler):
                 "chain_id": config.chain_id if config else None,
                 "maximum_amount_atomic": config.maximum_amount_atomic if config else None,
             })
+        if path == "/api/live/network":
+            config = live_config()
+            if config is None:
+                return self._json(503, {"error": "live-mode-not-configured"})
+            started = time.perf_counter()
+            try:
+                rpc = JsonRpcClient(config.rpc_url, timeout_seconds=5)
+                chain_hex = rpc.call("eth_chainId", [])
+                block_hex = rpc.call("eth_blockNumber", [])
+                gas_hex = rpc.call("eth_gasPrice", [])
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                chain_id = int(chain_hex, 16)
+                if chain_id != config.chain_id:
+                    return self._json(502, {"error": "rpc-network-mismatch"})
+                return self._json(200, {
+                    "online": True,
+                    "chain_id": chain_id,
+                    "block": int(block_hex, 16),
+                    "gas_gwei": round(int(gas_hex, 16) / 1_000_000_000, 4),
+                    "rpc_ms": latency_ms,
+                })
+            except Exception:
+                return self._json(502, {"online": False, "error": "rpc-unavailable"})
         name = "index.html" if path == "/" else path.lstrip("/")
         if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
             return self._json(404, {"error": "not-found"})
