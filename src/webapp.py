@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from src.live import LiveConfig, LiveCoordinator, LivePaymentError
+from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
 from src.service import ServiceRequest
@@ -13,6 +15,33 @@ from src.verifier import verify
 from src.workflow import AgentPayWorkflow
 
 WEB = Path(__file__).resolve().parent.parent / "web"
+
+
+def live_config() -> LiveConfig | None:
+    rpc = os.environ.get("BASE_RPC_URL", "").strip()
+    recipient = os.environ.get("AGENTPAY_RECIPIENT_ADDRESS", "").strip()
+    token = os.environ.get("AGENTPAY_USDC_ADDRESS", "").strip()
+    if not (rpc and recipient and token):
+        return None
+    try:
+        return LiveConfig(
+            rpc_url=rpc,
+            journal_path=os.environ.get("AGENTPAY_STATE_DB", "agentpay-state/live.sqlite3"),
+            chain_id=int(os.environ.get("AGENTPAY_CHAIN_ID", "8453")),
+            asset_contract=token,
+            recipient=recipient,
+            maximum_amount_atomic=int(os.environ.get("AGENTPAY_MAX_AMOUNT_ATOMIC", "1000000")),
+        ).validate()
+    except (ValueError, LivePaymentError):
+        return None
+
+
+def live_coordinator() -> LiveCoordinator:
+    config = live_config()
+    if config is None:
+        raise LivePaymentError("live-mode-not-configured")
+    Path(config.journal_path).parent.mkdir(parents=True, exist_ok=True)
+    return LiveCoordinator(config)
 
 
 class DemoSettlementProvider:
@@ -68,7 +97,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/health":
-            return self._json(200, {"ok": True, "environment": "DEMO"})
+            config = live_config()
+            return self._json(200, {
+                "ok": True,
+                "environment": "DEMO",
+                "live_enabled": config is not None,
+                "live_chain_id": config.chain_id if config else None,
+            })
+        if path == "/api/live/config":
+            config = live_config()
+            return self._json(200, {
+                "enabled": config is not None,
+                "chain_id": config.chain_id if config else None,
+                "maximum_amount_atomic": config.maximum_amount_atomic if config else None,
+            })
         name = "index.html" if path == "/" else path.lstrip("/")
         if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
             return self._json(404, {"error": "not-found"})
@@ -134,7 +176,50 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(proof, dict):
                     return self._json(400, {"error": "proof-required"})
                 return self._json(200, tamper_demo(proof))
+            if path == "/api/live/prepare":
+                amount = int(payload.get("amount_atomic", 250_000))
+                document = str(payload.get("document", ""))[:5000]
+                if not document.strip() or amount <= 0 or amount > 10_000_000:
+                    return self._json(400, {"error": "invalid-request"})
+                return self._json(200, live_coordinator().prepare(
+                    document, amount_atomic=amount, agent_id="agent:browser-wallet"
+                ))
+            if path == "/api/live/abort":
+                decision_id = str(payload.get("decision_id", ""))
+                if not decision_id:
+                    return self._json(400, {"error": "decision-id-required"})
+                return self._json(200, live_coordinator().abort(decision_id))
+            if path == "/api/live/uncertain":
+                decision_id = str(payload.get("decision_id", ""))
+                if not decision_id:
+                    return self._json(400, {"error": "decision-id-required"})
+                coordinator = live_coordinator()
+                record = coordinator.journal.get(decision_id)
+                if record.state == "PREPARED":
+                    record = coordinator.journal.mark_in_doubt(decision_id)
+                return self._json(200, {
+                    "environment": "LIVE", "decision_id": decision_id, "state": record.state
+                })
+            if path == "/api/live/reconcile":
+                decision_id = str(payload.get("decision_id", ""))
+                tx_hash = str(payload.get("transaction_hash", ""))
+                sender = str(payload.get("sender", ""))
+                if not (decision_id and tx_hash and sender):
+                    return self._json(400, {"error": "reconciliation-fields-required"})
+                try:
+                    result = live_coordinator().reconcile(decision_id, tx_hash, sender)
+                except LivePaymentError as exc:
+                    if str(exc) == "settlement-not-observed":
+                        return self._json(409, {
+                            "error": "settlement-not-observed",
+                            "state": "IN_DOUBT",
+                            "retry": "reconcile-only",
+                        })
+                    raise
+                return self._json(200, result)
             return self._json(404, {"error": "not-found"})
+        except (LivePaymentError, ExecutionStateError) as exc:
+            return self._json(409, {"error": str(exc)})
         except (ValueError, TypeError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid-request"})
 
