@@ -90,8 +90,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
-        cache = "public, max-age=86400" if is_graphic or name.endswith((".png", ".webp")) else "no-store"
-        self.send_header("cache-control", cache)
+        self.send_header("cache-control", "no-store")
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -152,7 +151,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
-        self.send_header("cache-control", "no-store")
+        cache = "public, max-age=86400" if is_graphic or name.endswith((".png", ".webp")) else "no-store"
+        self.send_header("cache-control", cache)
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -177,6 +177,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            self.send_response(404)
+            self.end_headers()
+            return
         if not target.exists():
             self.send_response(404)
             self.end_headers()
