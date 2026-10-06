@@ -4,9 +4,9 @@ This file pins the approved visual reference used for the competition-facing hom
 
 ## Reference
 
-- Source filename: `AgentPay Proof Futuristic Dashboard(2).png`
-- Dimensions: `1672 × 941`
-- SHA-256: `710f42037d39f550f3c03c90aed55baf26f6da4ceb75c6fe2115d16ec8c61524`
+- Source filename: `AgentPay Proof Futuristic Dashboard(4).png`
+- Dimensions: `1672 × 940`
+- SHA-256: `b3ade8790ca78244e1e9961424632b1d3c6b410301d4dc5d089805869f8d9169`
 
 The image itself is the authoritative visual reference. The implementation must preserve the same one-screen composition, proportions, hierarchy and visual language.
 
@@ -31,4 +31,4 @@ Runtime truth may replace mockup placeholder telemetry, but no runtime feature m
 
 ## DDC/Frequency use
 
-Before a competition-facing release, compare the rendered 1672 × 941 surface against this pinned reference and treat unexplained layout drift as a release failure.
+Before a competition-facing release, compare the rendered 1672 × 940 surface against this pinned reference and treat unexplained layout drift as a release failure.
