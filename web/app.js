@@ -12,6 +12,17 @@ let liveConfig={enabled:false};
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
+function showStatus(title,message,actions=[]){
+ $("#status-title").textContent=title;
+ $("#status-message").textContent=message;
+ const box=$("#status-actions");box.innerHTML="";
+ for(const action of actions){
+  const b=document.createElement("button");b.type="button";b.textContent=action.label;
+  b.onclick=()=>{if(action.onClick)action.onClick();$("#status-dialog").close()};
+  box.appendChild(b)
+ }
+ $("#status-dialog").showModal()
+}
 const icon=name=>{
  const path={
   doc:'<path d="M8 4h10l6 6v18H8z"/><path d="M18 4v7h6"/><path d="M12 17h8M12 21h8"/>',
@@ -66,8 +77,14 @@ async function reconcileLive(decisionId,txHash,sender){
  throw new Error("settlement-reconciliation-timeout")
 }
 async function runLive(){
- if(!liveConfig.enabled)throw new Error("live-mode-not-configured");
- if(!window.ethereum)throw new Error("browser-wallet-required");
+ if(!liveConfig.enabled){
+  showStatus("Live mode unavailable","The live Base settlement configuration is not enabled on this server.");
+  return
+ }
+ if(!window.ethereum){
+  showStatus("Wallet not detected","This Chrome profile is not exposing an EVM browser wallet to this page. Enable MetaMask, Coinbase Wallet, or another injected Base-compatible wallet for this site, then refresh.");
+  return
+ }
  document.body.classList.add("running");draw();
  const document="Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims.";
  let prepared=null;
@@ -79,7 +96,19 @@ async function runLive(){
   const accounts=await ethereum.request({method:"eth_requestAccounts"});
   if(!accounts?.[0])throw new Error("wallet-account-required");
   const sender=accounts[0];
-  await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:prepared.wallet_request.chainId}]});
+  try{
+   await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:prepared.wallet_request.chainId}]})
+  }catch(e){
+   if(e?.code===4902){
+    await ethereum.request({method:"wallet_addEthereumChain",params:[{
+     chainId:prepared.wallet_request.chainId,
+     chainName:"Base",
+     nativeCurrency:{name:"Ether",symbol:"ETH",decimals:18},
+     rpcUrls:["https://mainnet.base.org"],
+     blockExplorerUrls:["https://basescan.org"]
+    }]})
+   }else{throw e}
+  }
   $("#runtime-state").textContent="Wallet approval";
   let txHash;
   try{
@@ -105,6 +134,8 @@ async function runLive(){
  }catch(e){
   console.error(e);
   if($("#runtime-state").textContent!=="Verified")$("#runtime-state").textContent="Attention";
+  const msg=e?.code===4001?"You rejected the wallet request. No payment was sent.":(e?.message||"Live payment failed.");
+  showStatus("Live payment stopped",msg);
  }finally{document.body.classList.remove("running")}
 }
 async function initRuntime(){
@@ -118,6 +149,8 @@ async function initRuntime(){
 }
 $("#run-ok").onclick=()=>run(250000);
 $("#run-live").onclick=()=>runLive();
+$("#nav-run").onclick=e=>{e.preventDefault();document.querySelector(".cta").animate([{outline:"0 solid transparent"},{outline:"2px solid rgba(98,217,255,.8)"},{outline:"0 solid transparent"}],{duration:900})};
+$("#nav-proofs").onclick=e=>{e.preventDefault();if(currentProof)openEvidence();else showStatus("No proof yet","Run the demo or a live payment first. A verified proof will appear here.")};
 initRuntime();
 $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 
