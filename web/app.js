@@ -13,6 +13,11 @@ let connectedAccount=null;
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
+function fitStage(){
+ const stage=document.querySelector(".shell");
+ const scale=Math.min(innerWidth/1672,innerHeight/941);
+ stage.style.transform="translate(-50%,-50%) scale("+scale+")";
+}
 function showStatus(title,message,actions=[]){
  $("#status-title").textContent=title;
  $("#status-message").textContent=message;
@@ -85,8 +90,10 @@ async function connectWallet(){
  try{
   const accounts=await ethereum.request({method:"eth_requestAccounts"});
   connectedAccount=accounts?.[0]||null;
-  const b=$("#connect-wallet");
-  if(connectedAccount)b.textContent=short(connectedAccount,14);
+  if(connectedAccount){
+   $("#wallet-state").textContent=short(connectedAccount,12);
+   $("#runtime-state").textContent="Wallet ready";
+  }
   return connectedAccount
  }catch(e){
   showStatus("Wallet connection stopped",e?.code===4001?"You rejected the wallet connection request.":(e?.message||"Wallet connection failed."));
@@ -155,29 +162,37 @@ async function runLive(){
 async function initRuntime(){
  try{
   const r=await fetch("/api/live/config"),d=await r.json();liveConfig=d;
-  $("#live-enabled").textContent=d.enabled?"Enabled":"Not configured";
-  $("#runtime-network").textContent=d.enabled?"Base chain "+d.chain_id:"Demo";
-  $("#network-label").textContent=d.enabled?"Base "+d.chain_id:"Demo / Base";
-  $("#run-live").hidden=!d.enabled;
+  $("#runtime-network").textContent=d.enabled?"Base Mainnet":"Demo";
+  $("#network-label").textContent=d.enabled?"Base Mainnet":"Demo / Base";
+  $("#runtime-state").textContent=d.enabled?"Online":"Demo";
   if(window.ethereum){
    try{
     const accounts=await ethereum.request({method:"eth_accounts"});
     connectedAccount=accounts?.[0]||null;
-    if(connectedAccount)$("#connect-wallet").textContent=short(connectedAccount,14)
+    $("#wallet-state").textContent=connectedAccount?short(connectedAccount,12):"Not connected";
+    if(connectedAccount)$("#runtime-state").textContent="Wallet ready";
    }catch(e){console.error(e)}
    ethereum.on?.("accountsChanged",accounts=>{
     connectedAccount=accounts?.[0]||null;
-    $("#connect-wallet").textContent=connectedAccount?short(connectedAccount,14):"Connect Wallet";
+    $("#wallet-state").textContent=connectedAccount?short(connectedAccount,12):"Not connected";
+    $("#runtime-state").textContent=connectedAccount?"Wallet ready":"Online";
    });
   }
- }catch(e){console.error(e)}
+ }catch(e){
+  console.error(e);
+  $("#runtime-state").textContent="Unavailable";
+ }
 }
-$("#run-ok").onclick=()=>run(250000);
-$("#connect-wallet").onclick=()=>connectWallet();
-$("#run-live").onclick=()=>runLive();
-$("#nav-run").onclick=e=>{e.preventDefault();document.querySelector(".cta").animate([{outline:"0 solid transparent"},{outline:"2px solid rgba(98,217,255,.8)"},{outline:"0 solid transparent"}],{duration:900})};
-$("#nav-proofs").onclick=e=>{e.preventDefault();if(currentProof)openEvidence();else showStatus("No proof yet","Run the demo or a live payment first. A verified proof will appear here.")};
+$("#run-service").onclick=()=>runLive();
+$("#network-control").onclick=()=>connectWallet();
+$("#nav-run").onclick=e=>{e.preventDefault();runLive()};
+$("#nav-proofs").onclick=e=>{e.preventDefault();if(currentProof)openEvidence();else showStatus("No proof yet","Run a service first. A verified proof will appear here.")};
+$("#search-control").onclick=()=>showStatus("Search","Service search is not part of this competition vertical slice.");
+$("#theme-control").onclick=()=>document.body.classList.toggle("dim");
+$("#menu-control").onclick=()=>showStatus("AgentPay Proof","Use Run a Service for the governed live flow. The Base selector also connects your wallet.");
 initRuntime();
+fitStage();
+addEventListener("resize",fitStage,{passive:true});
 $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 
 (()=>{
@@ -185,7 +200,7 @@ $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShado
  let w=0,h=0,dpr=1,start=performance.now(),bits=[],stars=[],ridges=[];
  const rand=i=>{const n=Math.sin(i*131.73+17.91)*43758.5453123;return n-Math.floor(n)};
  function resize(){
-  dpr=Math.min(devicePixelRatio||1,3);w=innerWidth;h=innerHeight;
+  dpr=Math.min(devicePixelRatio||1,2);w=1672;h=941;
   c.width=Math.max(1,Math.round(w*dpr));c.height=Math.max(1,Math.round(h*dpr));c.style.width=w+"px";c.style.height=h+"px";g.setTransform(dpr,0,0,dpr,0,0);
   bits=Array.from({length:900},(_,i)=>({base:rand(i)*(w+460)-230,lane:(rand(i+700)-.5)*250,speed:30+rand(i+1200)*150,size:.35+rand(i+1800)*1.75,phase:rand(i+2400)*6.283,tone:rand(i+3100)}));
   stars=Array.from({length:1500},(_,i)=>({x:rand(i+4100)*w,y:rand(i+5200)*h*.72,a:.025+rand(i+6100)*.48,size:.25+rand(i+7000)*1.4}));
