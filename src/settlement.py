@@ -79,6 +79,11 @@ def settlement_from_rpc(*, tx: dict[str, Any], receipt: dict[str, Any], quote: Q
         raise SettlementError("sender-mismatch")
     if _norm_address(tx["to"]) != _norm_address(quote.asset_contract):
         raise SettlementError("token-contract-mismatch")
+    calldata = tx.get("input") or tx.get("data")
+    if not isinstance(calldata, str) or calldata.lower() != erc20_transfer_calldata(
+        quote.recipient, quote.amount_atomic
+    ).lower():
+        raise SettlementError("transaction-calldata-mismatch")
 
     matching = []
     for log in receipt.get("logs", []):
@@ -123,6 +128,9 @@ class JsonRpcClient:
         return body.get("result")
 
     def observe(self, tx_hash: str, quote: Quote, expected_sender: str) -> Settlement:
+        rpc_chain_id = self.call("eth_chainId", [])
+        if rpc_chain_id is None or _hex_int(rpc_chain_id) != quote.chain_id:
+            raise SettlementError("rpc-network-mismatch")
         tx = self.call("eth_getTransactionByHash", [tx_hash])
         receipt = self.call("eth_getTransactionReceipt", [tx_hash])
         if not tx or not receipt:
