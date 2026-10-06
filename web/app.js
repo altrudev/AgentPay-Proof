@@ -7,7 +7,8 @@ const stages=[
 ["06","Observation","Independent verification","eye"],
 ["07","Proof","Get verifiable evidence","hash"]
 ];
-let currentProof=null;\nlet liveConfig={enabled:false};
+let currentProof=null;
+let liveConfig={enabled:false};
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
@@ -34,7 +35,7 @@ async function run(amount){
   const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({amount_atomic:amount,document:"Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims."})});
   const d=await r.json();if(!r.ok)throw new Error(d.error||"request failed");currentProof=d.proof;const denied=d.status==="DENIED";
   if(denied){draw("deny")}else{for(let i=0;i<7;i++){draw("ok",i);await new Promise(resolve=>setTimeout(resolve,110))}}
-  const list=$("#activity-list"),row=document.createElement("p");row.innerHTML='<i class="'+(denied?"bad":"ok")+'"></i><b>AgentPay Demo</b><em>'+(denied?"Denied (policy)":"Verified")+'</em><span>'+(denied?"—":"0.25 USDC")+'</span><small>now</small>';list.prepend(row);while(list.children.length>5)list.lastElementChild.remove()
+  addActivity("AgentPay Demo",denied?"Denied (policy)":"Verified",denied?"—":"0.25 USDC",denied?"bad":"ok");
  }catch(e){console.error(e)}finally{document.body.classList.remove("running")}
 }
 function openEvidence(){
@@ -43,8 +44,82 @@ function openEvidence(){
  $("#evidence-grid").innerHTML=rows.filter(x=>x[1]).map(x=>'<article><small>'+esc(x[0])+'</small><div>'+esc(short(x[1],22))+'</div></article>').join("");
  $("#evidence-json").textContent=JSON.stringify(p,null,2);$("#evidence-dialog").showModal()
 }
+async function postJson(path,payload){
+ const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+ const d=await r.json();if(!r.ok){const e=new Error(d.error||"request failed");e.status=r.status;e.payload=d;throw e}return d
+}
+function addActivity(name,status,amount="—",kind="info"){
+ const list=$("#activity-list"),row=document.createElement("p");
+ row.innerHTML='<i class="'+kind+'"></i><b>'+esc(name)+'</b><em>'+esc(status)+'</em><span>'+esc(amount)+'</span><small>now</small>';
+ list.prepend(row);while(list.children.length>5)list.lastElementChild.remove()
+}
+async function reconcileLive(decisionId,txHash,sender){
+ for(let attempt=0;attempt<30;attempt++){
+  try{return await postJson("/api/live/reconcile",{decision_id:decisionId,transaction_hash:txHash,sender})}
+  catch(e){
+   if(e.status===409&&e.payload?.error==="settlement-not-observed"){
+    $("#runtime-state").textContent="Reconciling";await new Promise(r=>setTimeout(r,2000));continue
+   }
+   throw e
+  }
+ }
+ throw new Error("settlement-reconciliation-timeout")
+}
+async function runLive(){
+ if(!liveConfig.enabled)throw new Error("live-mode-not-configured");
+ if(!window.ethereum)throw new Error("browser-wallet-required");
+ document.body.classList.add("running");draw();
+ const document="Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims.";
+ let prepared=null;
+ try{
+  prepared=await postJson("/api/live/prepare",{amount_atomic:250000,document});
+  if(prepared.status==="DENIED"){
+   currentProof=prepared.proof;draw("deny");addActivity("AgentPay Live","Denied (policy)","—","bad");return
+  }
+  const accounts=await ethereum.request({method:"eth_requestAccounts"});
+  if(!accounts?.[0])throw new Error("wallet-account-required");
+  const sender=accounts[0];
+  await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:prepared.wallet_request.chainId}]});
+  $("#runtime-state").textContent="Wallet approval";
+  let txHash;
+  try{
+   txHash=await ethereum.request({method:"eth_sendTransaction",params:[{
+    from:sender,to:prepared.wallet_request.to,value:prepared.wallet_request.value,data:prepared.wallet_request.data
+   }]});
+  }catch(e){
+   if(e?.code===4001){
+    await postJson("/api/live/abort",{decision_id:prepared.decision_id});
+    addActivity("AgentPay Live","Wallet rejected","—","bad");
+   }else{
+    await postJson("/api/live/uncertain",{decision_id:prepared.decision_id}).catch(()=>{});
+    addActivity("AgentPay Live","In doubt","—","info");
+   }
+   throw e
+  }
+  $("#runtime-state").textContent="Observing chain";
+  const result=await reconcileLive(prepared.decision_id,txHash,sender);
+  currentProof=result.proof;
+  for(let i=0;i<7;i++){draw("ok",i);await new Promise(resolve=>setTimeout(resolve,110))}
+  addActivity("AgentPay Live","Verified","0.25 USDC","ok");
+  $("#runtime-state").textContent="Verified";
+ }catch(e){
+  console.error(e);
+  if($("#runtime-state").textContent!=="Verified")$("#runtime-state").textContent="Attention";
+ }finally{document.body.classList.remove("running")}
+}
+async function initRuntime(){
+ try{
+  const r=await fetch("/api/live/config"),d=await r.json();liveConfig=d;
+  $("#live-enabled").textContent=d.enabled?"Enabled":"Not configured";
+  $("#runtime-network").textContent=d.enabled?"Base chain "+d.chain_id:"Demo";
+  $("#network-label").textContent=d.enabled?"Base "+d.chain_id:"Demo / Base";
+  $("#run-live").hidden=!d.enabled;
+ }catch(e){console.error(e)}
+}
 $("#run-ok").onclick=()=>run(250000);
-initRuntime();\n$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
+$("#run-live").onclick=()=>runLive();
+initRuntime();
+$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 
 (()=>{
  const c=$("#scene"),g=c.getContext("2d",{alpha:false,desynchronized:true});
