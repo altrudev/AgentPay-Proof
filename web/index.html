@@ -5,12 +5,12 @@
 <meta name="description" content="Autonomous agent commerce with real payments, governed boundaries and independently verifiable proof.">
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
-<canvas id="scene" aria-hidden="true"></canvas>
 <div class="shell">
+<canvas id="scene" aria-hidden="true"></canvas>
 <header class="topbar">
-  <a class="brand" href="/"><img class="mark" src="/agentpay-mark.png" alt=""><span class="brandtext"><span><b>AgentPay</b><strong>Proof</strong></span><small>AUTHORIZED&nbsp;&nbsp;•&nbsp;&nbsp;PAID&nbsp;&nbsp;•&nbsp;&nbsp;EXECUTED&nbsp;&nbsp;•&nbsp;&nbsp;VERIFIED</small></span></a>
+  <a class="brand" href="/"><img class="brand-lockup" src="/agentpay-logo-transparent.png" alt="AgentPay Proof — Authorized, Paid, Executed, Verified"></a>
   <div class="top-copy">AGENT COMMERCE <i>//</i> INDEPENDENT VERIFICATION <i>//</i> OPEN STANDARDS</div>
-  <div class="top-actions"><button class="network"><span></span><b id="network-label">Demo / Base</b></button><button id="connect-wallet" class="wallet-connect">Connect Wallet</button><button class="icon">⌕</button><button class="icon">◐</button><button class="icon">☰</button></div>
+  <div class="top-actions"><button id="network-control" class="network"><span></span><b id="network-label">Base Mainnet</b><i>⌄</i></button><button class="icon" id="search-control">⌕</button><button class="icon" id="theme-control">◐</button><button class="icon" id="menu-control">☰</button></div>
 </header>
 
 <aside class="rail">
@@ -25,7 +25,7 @@
   <div class="hero-copy">
     <h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1>
     <p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p>
-    <div class="cta"><button id="run-ok" class="primary">Run Demo <span>→</span></button><button id="run-live" hidden>Run Live <span>→</span></button><button id="explore">Explore Services <span>→</span></button></div>
+    <div class="cta"><button id="run-service" class="primary">Run a Service <span>→</span></button><button id="explore">Explore Services <span>→</span></button></div>
   </div>
   <div class="promise">REAL PAYMENTS<br>CLEAR BOUNDARIES<br>INDEPENDENT OBSERVATION<br>VERIFIABLE PROOF<br>A MORE OPEN<br>MACHINE ECONOMY</div>
   <div class="weave-column"><div class="weave-core"></div><div class="weave-glow"></div></div>
@@ -45,15 +45,19 @@
     </div>
   </article>
   <article class="panel activity" id="proofs">
-    <div class="panel-head"><h2>Activity</h2><a>Current session</a></div>
+    <div class="panel-head"><h2>Live Activity</h2><a id="activity-link">View all →</a></div>
     <div id="activity-list">
-      <p><i class="info"></i><b>Ready</b><em>Demo mode</em><span>—</span><small>now</small></p>
+      <p class="empty"><i class="info"></i><b>Ready</b><em>Waiting</em><span>—</span><small>now</small></p>
+      <p class="empty"><i></i><b>—</b><em>—</em><span>—</span><small>—</small></p>
+      <p class="empty"><i></i><b>—</b><em>—</em><span>—</span><small>—</small></p>
+      <p class="empty"><i></i><b>—</b><em>—</em><span>—</span><small>—</small></p>
+      <p class="empty"><i></i><b>—</b><em>—</em><span>—</span><small>—</small></p>
     </div>
   </article>
   <article class="panel status">
-    <div class="panel-head"><h2>Runtime Status</h2><a>▥</a></div>
-    <div class="online"><i></i><span id="runtime-network">Demo</span> <b id="runtime-state">Ready</b></div>
-    <dl><div><dt>Live settlement</dt><dd id="live-enabled">Not configured</dd></div><div><dt>Evidence</dt><dd>Local + RPC</dd></div><div><dt>Wallet custody</dt><dd>External</dd></div><div><dt>Auto retry</dt><dd>Disabled</dd></div></dl>
+    <div class="panel-head"><h2>Network Status</h2><a id="signal-icon">▥</a></div>
+    <div class="online"><i></i><span id="runtime-network">Base Mainnet</span> <b id="runtime-state">Checking</b></div>
+    <dl><div><dt>Block</dt><dd id="network-block">—</dd></div><div><dt>Gas</dt><dd id="network-gas">—</dd></div><div><dt>RPC</dt><dd id="network-rpc">—</dd></div><div><dt>Wallet</dt><dd id="wallet-state">Not connected</dd></div></dl>
     <div class="signal-bars"></div>
   </article>
 </section>
