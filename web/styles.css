@@ -75,3 +75,14 @@ background-size:25px 25px;mask-image:linear-gradient(90deg,#000 0 18%,rgba(0,0,0
 .proof-fan{right:2.3%;top:12%;transform:perspective(700px) rotateY(-8deg)}
 .proof-fan span{width:54px;height:190px}
 .hero-copy{max-width:660px}
+
+#status-dialog{width:min(560px,90vw);border:1px solid var(--line);background:#06111d;color:white;padding:0}
+#status-dialog form{padding:20px}
+#status-dialog header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+#status-dialog header h2{margin:0;font:700 16px ui-monospace,monospace}
+#status-dialog header button{background:none;border:0;color:white;font-size:24px;cursor:pointer}
+#status-message{color:#b7c9da;line-height:1.55;font-size:13px;margin:18px 0}
+#status-actions{display:flex;gap:10px;justify-content:flex-end}
+#status-actions button{border:1px solid rgba(125,181,231,.38);background:#f7fbff;color:#06111d;border-radius:7px;padding:10px 14px;font:700 11px ui-monospace,monospace;cursor:pointer}
+.rail nav a[href]{cursor:pointer}
+.service{cursor:default}
