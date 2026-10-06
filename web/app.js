@@ -159,6 +159,22 @@ async function runLive(){
   showStatus("Live payment stopped",msg);
  }finally{document.body.classList.remove("running")}
 }
+async function refreshNetworkStatus(){
+ try{
+  const r=await fetch("/api/live/network");
+  const d=await r.json();
+  if(!r.ok||!d.online)throw new Error(d.error||"rpc-unavailable");
+  $("#network-block").textContent=String(d.block);
+  $("#network-gas").textContent=String(d.gas_gwei)+" gwei";
+  $("#network-rpc").textContent=String(d.rpc_ms)+" ms";
+  if(!connectedAccount)$("#runtime-state").textContent="Online";
+ }catch(e){
+  $("#network-block").textContent="—";
+  $("#network-gas").textContent="—";
+  $("#network-rpc").textContent="—";
+  if(!connectedAccount)$("#runtime-state").textContent="RPC offline";
+ }
+}
 async function initRuntime(){
  try{
   const r=await fetch("/api/live/config"),d=await r.json();liveConfig=d;
@@ -178,6 +194,7 @@ async function initRuntime(){
     $("#runtime-state").textContent=connectedAccount?"Wallet ready":"Online";
    });
   }
+  if(d.enabled)refreshNetworkStatus();
  }catch(e){
   console.error(e);
   $("#runtime-state").textContent="Unavailable";
@@ -218,7 +235,7 @@ $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShado
   for(const p of stars){g.fillStyle='rgba(52,164,250,'+p.a+')';g.fillRect(p.x,p.y,p.size,p.size)}
  }
  function drawMist(){
-  const blobs=[[.48,.27,.18,.11],[.60,.24,.15,.10],[.74,.22,.17,.12],[.86,.26,.14,.09]];
+  const blobs=[[.45,.24,.19,.13],[.56,.21,.17,.14],[.69,.20,.18,.16],[.81,.23,.17,.13],[.92,.25,.13,.11]];
   for(const [bx,by,rx,a] of blobs){
     const gr=g.createRadialGradient(w*bx,h*by,0,w*bx,h*by,w*rx);
     gr.addColorStop(0,'rgba(165,208,235,'+a+')');gr.addColorStop(.45,'rgba(55,106,145,'+(a*.42)+')');gr.addColorStop(1,'rgba(0,0,0,0)');
@@ -226,6 +243,28 @@ $("#explore").onclick=()=>document.querySelector(".services").animate([{boxShado
   }
  }
  function drawMountains(){
+  const peaks=[
+   [470,h*.49,610,h*.24,760,h*.49],
+   [650,h*.50,805,h*.19,970,h*.49],
+   [835,h*.50,965,h*.29,1095,h*.50],
+   [1000,h*.50,1140,h*.16,1285,h*.49],
+   [1190,h*.50,1370,h*.24,1510,h*.50],
+   [1360,h*.50,1535,h*.18,1690,h*.50]
+  ];
+  for(let p=0;p<peaks.length;p++){
+   const [x1,y1,x2,y2,x3,y3]=peaks[p];
+   const grad=g.createLinearGradient(0,y2,0,y3);
+   grad.addColorStop(0,p%2?"rgba(46,96,136,.92)":"rgba(31,74,111,.92)");
+   grad.addColorStop(.55,"rgba(8,38,64,.92)");
+   grad.addColorStop(1,"rgba(3,19,34,.12)");
+   g.fillStyle=grad;g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.lineTo(x3,y3);g.closePath();g.fill();
+   g.strokeStyle="rgba(224,246,255,.82)";g.lineWidth=1.4;
+   g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.lineTo(x3,y3);g.stroke();
+   g.strokeStyle="rgba(105,207,255,.54)";g.lineWidth=.9;
+   g.beginPath();g.moveTo(x2,y2);g.lineTo(x2-(x2-x1)*.22,y2+(y1-y2)*.28);g.moveTo(x2,y2);g.lineTo(x2+(x3-x2)*.26,y2+(y3-y2)*.34);g.stroke();
+   g.strokeStyle="rgba(246,253,255,.72)";
+   g.beginPath();g.moveTo(x2,y2);g.lineTo(x2-18,y2+23);g.lineTo(x2-4,y2+18);g.lineTo(x2+10,y2+30);g.lineTo(x2+25,y2+21);g.stroke();
+  }
   for(let layer=0;layer<ridges.length;layer++){
    const r=ridges[layer],base=h*.565+layer*10;
    g.beginPath();g.moveTo(r[0][0],base);for(const [x,y] of r)g.lineTo(x,y);g.lineTo(r[r.length-1][0],base);g.closePath();
