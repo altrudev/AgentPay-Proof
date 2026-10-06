@@ -90,7 +90,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
-        self.send_header("cache-control", "no-store")
+        cache = "public, max-age=86400" if is_graphic or name.endswith((".png", ".webp")) else "no-store"
+        self.send_header("cache-control", cache)
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -137,13 +138,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._json(502, {"online": False, "error": "rpc-unavailable"})
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic:
             return self._json(404, {"error": "not-found"})
-        target = WEB / name
+        target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            return self._json(404, {"error": "not-found"})
         if not target.exists():
             return self._json(404, {"error": "not-found"})
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
@@ -165,17 +170,19 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic:
             self.send_response(404)
             self.end_headers()
             return
-        target = WEB / name
+        target = (WEB / name).resolve()
         if not target.exists():
             self.send_response(404)
             self.end_headers()
             return
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
