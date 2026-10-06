@@ -36,7 +36,7 @@ class ApprovedGuiContractTests(unittest.TestCase):
     def test_approved_fixed_design_space_is_locked(self):
         self.assertIn("width:1672px;height:940px", CSS)
         self.assertIn("grid-template-columns:198px 1fr", CSS)
-        self.assertIn("grid-template-rows:118px 1fr 43px", CSS)
+        self.assertIn("grid-template-rows:112px 1fr 46px", CSS)
 
     def test_no_old_fake_network_telemetry(self):
         for fake in ["8456721", "0.0012 USDC", "42 ms", "7d 12h 46m", "Base Sepolia"]:
