@@ -58,7 +58,7 @@ class ExecutionJournal:
         return conn
 
     def _initialize(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS executions (
@@ -79,7 +79,7 @@ class ExecutionJournal:
         if authority.decision != "PERMIT":
             raise ExecutionStateError("execution-requires-permit")
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn, conn:
                 conn.execute(
                     "INSERT INTO executions(decision_id, quote_digest, authority_digest, state, context_json) VALUES (?, ?, ?, 'PREPARED', ?)",
                     (authority.decision_id, quote.digest, authority.digest, context_json),
@@ -89,7 +89,7 @@ class ExecutionJournal:
         return self.get(authority.decision_id)
 
     def context(self, decision_id: str) -> str | None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute(
                 "SELECT context_json FROM executions WHERE decision_id = ?",
                 (decision_id,),
@@ -99,7 +99,7 @@ class ExecutionJournal:
         return row["context_json"]
 
     def get(self, decision_id: str) -> ExecutionRecord:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute(
                 "SELECT decision_id, quote_digest, authority_digest, state, transaction_hash "
                 "FROM executions WHERE decision_id = ?",
@@ -118,7 +118,7 @@ class ExecutionJournal:
         tx_hash = transaction_hash or current.transaction_hash
         if state in {"DISPATCHED", "OBSERVED", "CONSUMED"} and not tx_hash:
             raise ExecutionStateError("transaction-hash-required")
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             changed = conn.execute(
                 "UPDATE executions SET state = ?, transaction_hash = ? "
                 "WHERE decision_id = ? AND state = ?",
