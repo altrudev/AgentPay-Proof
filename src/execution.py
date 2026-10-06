@@ -22,11 +22,12 @@ class Broadcaster(Protocol):
 
 
 _ALLOWED_TRANSITIONS = {
-    "PREPARED": {"DISPATCHED", "IN_DOUBT"},
+    "PREPARED": {"DISPATCHED", "IN_DOUBT", "ABORTED"},
     "DISPATCHED": {"OBSERVED", "IN_DOUBT"},
     "IN_DOUBT": {"DISPATCHED", "OBSERVED"},
     "OBSERVED": {"CONSUMED"},
     "CONSUMED": set(),
+    "ABORTED": set(),
 }
 
 
@@ -115,6 +116,10 @@ class ExecutionJournal:
 
     def mark_dispatched(self, decision_id: str, transaction_hash: str) -> ExecutionRecord:
         return self.transition(decision_id, "DISPATCHED", transaction_hash=transaction_hash)
+
+    def abort_prepared(self, decision_id: str) -> ExecutionRecord:
+        """Close a reservation only when dispatch is known not to have occurred."""
+        return self.transition(decision_id, "ABORTED")
 
     def mark_in_doubt(self, decision_id: str, transaction_hash: str | None = None) -> ExecutionRecord:
         return self.transition(decision_id, "IN_DOUBT", transaction_hash=transaction_hash)
