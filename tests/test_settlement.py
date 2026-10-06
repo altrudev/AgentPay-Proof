@@ -43,7 +43,7 @@ class SettlementAdapterTests(unittest.TestCase):
 
     def test_rpc_receipt_requires_matching_transfer_log(self):
         quote, _ = fixture()
-        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105"}
+        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105", "input": erc20_transfer_calldata(RECIPIENT, 250_000)}
         receipt = {
             "status": "0x1", "transactionHash": "0xabc",
             "logs": [{
@@ -58,7 +58,7 @@ class SettlementAdapterTests(unittest.TestCase):
 
     def test_fabricated_hash_without_transfer_is_rejected(self):
         quote, _ = fixture()
-        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105"}
+        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105", "input": erc20_transfer_calldata(RECIPIENT, 250_000)}
         receipt = {"status": "0x1", "transactionHash": "0xabc", "logs": []}
         with self.assertRaisesRegex(SettlementError, "matching-transfer-log-not-found"):
             settlement_from_rpc(tx=tx, receipt=receipt, quote=quote, expected_sender=SENDER)
@@ -66,7 +66,7 @@ class SettlementAdapterTests(unittest.TestCase):
     def test_wrong_recipient_log_is_rejected(self):
         quote, _ = fixture()
         wrong = "0x000000000000000000000000000000000000dead"
-        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105"}
+        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105", "input": erc20_transfer_calldata(RECIPIENT, 250_000)}
         receipt = {
             "status": "0x1", "transactionHash": "0xabc",
             "logs": [{"address": TOKEN, "topics": [TRANSFER_TOPIC, topic(SENDER), topic(wrong)], "data": hex(250_000)}],
@@ -76,12 +76,26 @@ class SettlementAdapterTests(unittest.TestCase):
 
     def test_wrong_amount_log_is_rejected(self):
         quote, _ = fixture()
-        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105"}
+        tx = {"hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105", "input": erc20_transfer_calldata(RECIPIENT, 250_000)}
         receipt = {
             "status": "0x1", "transactionHash": "0xabc",
             "logs": [{"address": TOKEN, "topics": [TRANSFER_TOPIC, topic(SENDER), topic(RECIPIENT)], "data": hex(1)}],
         }
         with self.assertRaisesRegex(SettlementError, "matching-transfer-log-not-found"):
+            settlement_from_rpc(tx=tx, receipt=receipt, quote=quote, expected_sender=SENDER)
+
+    def test_wrong_calldata_is_rejected_even_with_matching_log(self):
+        quote, _ = fixture()
+        wrong = "0x000000000000000000000000000000000000dead"
+        tx = {
+            "hash": "0xabc", "from": SENDER, "to": TOKEN, "chainId": "0x2105",
+            "input": erc20_transfer_calldata(wrong, 250_000),
+        }
+        receipt = {
+            "status": "0x1", "transactionHash": "0xabc",
+            "logs": [{"address": TOKEN, "topics": [TRANSFER_TOPIC, topic(SENDER), topic(RECIPIENT)], "data": hex(250_000)}],
+        }
+        with self.assertRaisesRegex(SettlementError, "transaction-calldata-mismatch"):
             settlement_from_rpc(tx=tx, receipt=receipt, quote=quote, expected_sender=SENDER)
 
 

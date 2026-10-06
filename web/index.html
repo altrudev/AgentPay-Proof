@@ -10,7 +10,7 @@
 <header class="topbar">
   <a class="brand" href="/"><img class="mark" src="/agentpay-mark.png" alt=""><span class="brandtext"><span><b>AgentPay</b><strong>Proof</strong></span><small>AUTHORIZED&nbsp;&nbsp;•&nbsp;&nbsp;PAID&nbsp;&nbsp;•&nbsp;&nbsp;EXECUTED&nbsp;&nbsp;•&nbsp;&nbsp;VERIFIED</small></span></a>
   <div class="top-copy">AGENT COMMERCE <i>//</i> INDEPENDENT VERIFICATION <i>//</i> OPEN STANDARDS</div>
-  <div class="top-actions"><button class="network"><span></span>Base Testnet⌄</button><button class="icon">⌕</button><button class="icon">◐</button><button class="icon">☰</button></div>
+  <div class="top-actions"><button class="network"><span></span><b id="network-label">Demo / Base</b></button><button class="icon">⌕</button><button class="icon">◐</button><button class="icon">☰</button></div>
 </header>
 
 <aside class="rail">
@@ -25,7 +25,7 @@
   <div class="hero-copy">
     <h1>LET AGENTS PAY.<br>KEEP AUTHORITY<br><em>VERIFIABLE.</em></h1>
     <p>Autonomous agent commerce with real payments,<br>governed boundaries, and independently verifiable proof.</p>
-    <div class="cta"><button id="run-ok" class="primary">Run a Service <span>→</span></button><button id="explore">Explore Services <span>→</span></button></div>
+    <div class="cta"><button id="run-ok" class="primary">Run Demo <span>→</span></button><button id="run-live" hidden>Run Live <span>→</span></button><button id="explore">Explore Services <span>→</span></button></div>
   </div>
   <div class="promise">REAL PAYMENTS<br>CLEAR BOUNDARIES<br>INDEPENDENT OBSERVATION<br>VERIFIABLE PROOF<br>A MORE OPEN<br>MACHINE ECONOMY</div>
   <div class="weave-column"><div class="weave-core"></div><div class="weave-glow"></div></div>
@@ -45,19 +45,15 @@
     </div>
   </article>
   <article class="panel activity">
-    <div class="panel-head"><h2>Live Activity</h2><a>View all →</a></div>
+    <div class="panel-head"><h2>Activity</h2><a>Current session</a></div>
     <div id="activity-list">
-      <p><i class="ok"></i><b>Code Analysis</b><em>Verified</em><span>1.00 USDC</span><small>2m ago</small></p>
-      <p><i class="info"></i><b>3D Generation</b><em>In progress</em><span>1.00 USDC</span><small>6m ago</small></p>
-      <p><i class="ok"></i><b>Data Research</b><em>Verified</em><span>1.00 USDC</span><small>14m ago</small></p>
-      <p><i class="bad"></i><b>Custom Service</b><em>Denied (policy)</em><span>—</span><small>18m ago</small></p>
-      <p><i class="ok"></i><b>Infrastructure Check</b><em>Verified</em><span>1.00 USDC</span><small>25m ago</small></p>
+      <p><i class="info"></i><b>Ready</b><em>Demo mode</em><span>—</span><small>now</small></p>
     </div>
   </article>
   <article class="panel status">
-    <div class="panel-head"><h2>Network Status</h2><a>▥</a></div>
-    <div class="online"><i></i>Base Sepolia <b>Online</b></div>
-    <dl><div><dt>Block</dt><dd>8456721</dd></div><div><dt>Gas</dt><dd>0.0012 USDC</dd></div><div><dt>RPC</dt><dd>42 ms</dd></div><div><dt>Uptime</dt><dd>7d 12h 46m</dd></div></dl>
+    <div class="panel-head"><h2>Runtime Status</h2><a>▥</a></div>
+    <div class="online"><i></i><span id="runtime-network">Demo</span> <b id="runtime-state">Ready</b></div>
+    <dl><div><dt>Live settlement</dt><dd id="live-enabled">Not configured</dd></div><div><dt>Evidence</dt><dd>Local + RPC</dd></div><div><dt>Wallet custody</dt><dd>External</dd></div><div><dt>Auto retry</dt><dd>Disabled</dd></div></dl>
     <div class="signal-bars"></div>
   </article>
 </section>
