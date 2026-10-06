@@ -66,23 +66,37 @@ class ExecutionJournal:
                     quote_digest TEXT NOT NULL,
                     authority_digest TEXT NOT NULL,
                     state TEXT NOT NULL,
-                    transaction_hash TEXT
+                    transaction_hash TEXT,
+                    context_json TEXT
                 )
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(executions)")}
+            if "context_json" not in columns:
+                conn.execute("ALTER TABLE executions ADD COLUMN context_json TEXT")
 
-    def reserve(self, authority: Authority, quote: Quote) -> ExecutionRecord:
+    def reserve(self, authority: Authority, quote: Quote, *, context_json: str | None = None) -> ExecutionRecord:
         if authority.decision != "PERMIT":
             raise ExecutionStateError("execution-requires-permit")
         try:
             with self._connect() as conn:
                 conn.execute(
-                    "INSERT INTO executions(decision_id, quote_digest, authority_digest, state) VALUES (?, ?, ?, 'PREPARED')",
-                    (authority.decision_id, quote.digest, authority.digest),
+                    "INSERT INTO executions(decision_id, quote_digest, authority_digest, state, context_json) VALUES (?, ?, ?, 'PREPARED', ?)",
+                    (authority.decision_id, quote.digest, authority.digest, context_json),
                 )
         except sqlite3.IntegrityError as exc:
             raise ExecutionStateError("authority-already-reserved") from exc
         return self.get(authority.decision_id)
+
+    def context(self, decision_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT context_json FROM executions WHERE decision_id = ?",
+                (decision_id,),
+            ).fetchone()
+        if row is None:
+            raise ExecutionStateError("execution-not-found")
+        return row["context_json"]
 
     def get(self, decision_id: str) -> ExecutionRecord:
         with self._connect() as conn:
