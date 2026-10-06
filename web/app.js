@@ -9,6 +9,7 @@ const stages=[
 ];
 let currentProof=null;
 let liveConfig={enabled:false};
+let connectedAccount=null;
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
@@ -76,15 +77,29 @@ async function reconcileLive(decisionId,txHash,sender){
  }
  throw new Error("settlement-reconciliation-timeout")
 }
+async function connectWallet(){
+ if(!window.ethereum){
+  showStatus("Wallet not detected","No injected EVM wallet is available in this browser profile. Install or enable MetaMask, Coinbase Wallet, or another Base-compatible browser wallet, allow it on this site, then refresh.");
+  return null
+ }
+ try{
+  const accounts=await ethereum.request({method:"eth_requestAccounts"});
+  connectedAccount=accounts?.[0]||null;
+  const b=$("#connect-wallet");
+  if(connectedAccount)b.textContent=short(connectedAccount,14);
+  return connectedAccount
+ }catch(e){
+  showStatus("Wallet connection stopped",e?.code===4001?"You rejected the wallet connection request.":(e?.message||"Wallet connection failed."));
+  return null
+ }
+}
 async function runLive(){
  if(!liveConfig.enabled){
   showStatus("Live mode unavailable","The live Base settlement configuration is not enabled on this server.");
   return
  }
- if(!window.ethereum){
-  showStatus("Wallet not detected","This Chrome profile is not exposing an EVM browser wallet to this page. Enable MetaMask, Coinbase Wallet, or another injected Base-compatible wallet for this site, then refresh.");
-  return
- }
+ const account=connectedAccount||await connectWallet();
+ if(!account)return;
  document.body.classList.add("running");draw();
  const document="Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims.";
  let prepared=null;
@@ -93,9 +108,8 @@ async function runLive(){
   if(prepared.status==="DENIED"){
    currentProof=prepared.proof;draw("deny");addActivity("AgentPay Live","Denied (policy)","—","bad");return
   }
-  const accounts=await ethereum.request({method:"eth_requestAccounts"});
-  if(!accounts?.[0])throw new Error("wallet-account-required");
-  const sender=accounts[0];
+  const sender=connectedAccount||account;
+  if(!sender)throw new Error("wallet-account-required");
   try{
    await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:prepared.wallet_request.chainId}]})
   }catch(e){
@@ -145,9 +159,21 @@ async function initRuntime(){
   $("#runtime-network").textContent=d.enabled?"Base chain "+d.chain_id:"Demo";
   $("#network-label").textContent=d.enabled?"Base "+d.chain_id:"Demo / Base";
   $("#run-live").hidden=!d.enabled;
+  if(window.ethereum){
+   try{
+    const accounts=await ethereum.request({method:"eth_accounts"});
+    connectedAccount=accounts?.[0]||null;
+    if(connectedAccount)$("#connect-wallet").textContent=short(connectedAccount,14)
+   }catch(e){console.error(e)}
+   ethereum.on?.("accountsChanged",accounts=>{
+    connectedAccount=accounts?.[0]||null;
+    $("#connect-wallet").textContent=connectedAccount?short(connectedAccount,14):"Connect Wallet";
+   });
+  }
  }catch(e){console.error(e)}
 }
 $("#run-ok").onclick=()=>run(250000);
+$("#connect-wallet").onclick=()=>connectWallet();
 $("#run-live").onclick=()=>runLive();
 $("#nav-run").onclick=e=>{e.preventDefault();document.querySelector(".cta").animate([{outline:"0 solid transparent"},{outline:"2px solid rgba(98,217,255,.8)"},{outline:"0 solid transparent"}],{duration:900})};
 $("#nav-proofs").onclick=e=>{e.preventDefault();if(currentProof)openEvidence();else showStatus("No proof yet","Run the demo or a live payment first. A verified proof will appear here.")};
