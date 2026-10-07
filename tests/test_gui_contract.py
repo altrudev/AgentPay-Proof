@@ -63,9 +63,16 @@ class ApprovedGuiContractTests(unittest.TestCase):
 
     def test_workflow_flow_is_crossfaded_not_hard_stacked(self):
         self.assertIn("flow-background.webp", HTML)
-        self.assertIn("top:258px;width:1474px;height:242px", CSS)
+        self.assertIn("top:322px;width:1474px;height:108px", CSS)
         self.assertIn("mask-image:linear-gradient", CSS)
         self.assertIn(".flow-line{display:none}", CSS)
+
+    def test_stage_assets_are_clean_cache_busted_vectors(self):
+        for name in ["icon-intent.svg","icon-quote.svg","icon-authority.svg","icon-settlement.svg","icon-execution.svg","icon-observation.svg","icon-proof.svg"]:
+            self.assertIn(f"/assets/approved-v6/{name}?v=visual-integrity-1", HTML)
+            svg = (ROOT / "web" / "assets" / "approved-v6" / name).read_text()
+            self.assertIn('viewBox="0 0 80 92"', svg)
+            self.assertLess(len(svg), 4000, name)
 
     def test_runtime_truth_remains_live(self):
         for target in ["network-block", "network-gas", "network-rpc", "wallet-state", "activity-list"]:
