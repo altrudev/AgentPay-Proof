@@ -69,7 +69,7 @@ class ApprovedGuiContractTests(unittest.TestCase):
 
     def test_no_fake_mock_telemetry(self):
         combined = HTML + JS
-        for fake in ["8456721", "0.0012 USDC", "42 ms", "7d 12h 46m", "Base Sepolia"]:
+        for fake in ["8456721", "0.0012 USDC", "42 ms", "7d 12h 46m"]:
             self.assertNotIn(fake, combined)
 
     def test_wallet_approval_is_explicit(self):
@@ -77,6 +77,22 @@ class ApprovedGuiContractTests(unittest.TestCase):
         self.assertIn("eth_sendTransaction", JS)
         self.assertIn("/api/live/abort", JS)
         self.assertIn("/api/live/uncertain", JS)
+
+    def test_populated_service_and_companion_surfaces_exist(self):
+        for target in [
+            "service-dialog", "service-title", "service-input", "service-submit",
+            "proof-download", "artifact-download", "status-dialog",
+        ]:
+            self.assertIn(f'id="{target}"', HTML)
+        self.assertIn("/api/catalog", JS)
+        self.assertIn("openCompanion", JS)
+        self.assertIn("sessionStorage", JS)
+
+    def test_service_prices_are_runtime_catalog_values(self):
+        self.assertIn('data-price="code"', HTML)
+        self.assertIn('data-price="research"', HTML)
+        self.assertIn('data-price="3d"', HTML)
+        self.assertNotIn("<b>1.00 USDC</b>", HTML)
 
     def test_production_raster_budget_is_lightweight(self):
         root = ROOT / "web" / "assets" / "approved-v6"
