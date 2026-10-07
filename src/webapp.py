@@ -141,7 +141,8 @@ class Handler(BaseHTTPRequestHandler):
         is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
         is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
         is_v5_asset = name.startswith("assets/approved-v5/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
-        if name not in allowed and not is_graphic and not is_approved and not is_v5_asset:
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg", ".webp")) and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved and not is_v5_asset and not is_v6_asset:
             return self._json(404, {"error": "not-found"})
         target = (WEB / name).resolve()
         if WEB.resolve() not in target.parents and target != WEB.resolve():
@@ -153,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
-        cache = "public, max-age=86400, immutable" if is_graphic or is_v5_asset or name.endswith((".png", ".webp")) else "no-store"
+        cache = "public, max-age=86400, immutable" if is_graphic or is_v5_asset or is_v6_asset or name.endswith((".png", ".webp")) else "no-store"
         self.send_header("cache-control", cache)
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
@@ -175,7 +176,9 @@ class Handler(BaseHTTPRequestHandler):
         allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
         is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
         is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
-        if name not in allowed and not is_graphic and not is_approved:
+        is_v5_asset = name.startswith("assets/approved-v5/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg", ".webp")) and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved and not is_v5_asset and not is_v6_asset:
             self.send_response(404)
             self.end_headers()
             return
