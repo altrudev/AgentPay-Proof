@@ -275,7 +275,7 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             SENDER,
             now=NOW + 2,
         )
-        with self.assertRaisesRegex(CommercialLiveError, "payment-reconciliation-not-allowed:CONSUMED"):
+        with self.assertRaisesRegex(CommercialLiveError, "commercial-settlement-not-authorized:CONSUMED"):
             self.paid.reconcile(
                 self.grant_id,
                 out["payment_decision_id"],
