@@ -163,6 +163,12 @@ class ProviderRegistry:
         self._admissions[binding.provider_id] = admission
         return admission
 
+    def revoke(self, provider_id: str) -> None:
+        if provider_id not in self._bindings:
+            raise ValueError("provider-not-admitted")
+        self._bindings.pop(provider_id, None)
+        self._admissions.pop(provider_id, None)
+
     def require(
         self,
         provider_id: str,
