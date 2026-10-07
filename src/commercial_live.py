@@ -121,7 +121,6 @@ def _payment_identity(
 ) -> tuple[str, str, str]:
     binding = {
         "grant_digest": grant.digest,
-        "route_digest": route.digest,
     }
     digest = canonical_hash(binding)
     return (
@@ -298,6 +297,7 @@ class PaidCommercialCoordinator:
         decision_id: str,
         *,
         execution_approval_digest: str,
+        now: int,
     ) -> dict[str, Any]:
         raw = self.payment_journal.context(decision_id)
         if not raw:
@@ -307,6 +307,11 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("wallet-grant-binding-mismatch")
         if context.get("execution_approval_digest") != execution_approval_digest:
             raise CommercialLiveError("execution-approval-mismatch")
+        route = CapabilityRoute(**context["route"])
+        authority = Authority(**context["authority"])
+        quote = Quote(**context["quote"])
+        if now > min(route.expires_at, authority.expires_at, quote.expires_at):
+            raise CommercialLiveError("execution-approval-expired")
         payment = self.payment_journal.get(decision_id)
         if payment.state != "PREPARED":
             raise CommercialLiveError(f"wallet-confirm-not-allowed:{payment.state}")
