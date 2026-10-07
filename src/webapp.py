@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -11,6 +12,7 @@ from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
 from src.service import ServiceRequest
+from src.settlement import JsonRpcClient
 from src.verifier import verify
 from src.workflow import AgentPayWorkflow
 
@@ -111,18 +113,45 @@ class Handler(BaseHTTPRequestHandler):
                 "chain_id": config.chain_id if config else None,
                 "maximum_amount_atomic": config.maximum_amount_atomic if config else None,
             })
+        if path == "/api/live/network":
+            config = live_config()
+            if config is None:
+                return self._json(503, {"online": False, "error": "live-mode-not-configured"})
+            started = time.perf_counter()
+            try:
+                rpc = JsonRpcClient(config.rpc_url, timeout_seconds=5)
+                chain_hex = rpc.call("eth_chainId", [])
+                block_hex = rpc.call("eth_blockNumber", [])
+                gas_hex = rpc.call("eth_gasPrice", [])
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                chain_id = int(chain_hex, 16)
+                if chain_id != config.chain_id:
+                    return self._json(502, {"online": False, "error": "rpc-network-mismatch"})
+                return self._json(200, {
+                    "online": True,
+                    "chain_id": chain_id,
+                    "block": int(block_hex, 16),
+                    "gas_gwei": round(int(gas_hex, 16) / 1_000_000_000, 4),
+                    "rpc_ms": latency_ms,
+                })
+            except Exception:
+                return self._json(502, {"online": False, "error": "rpc-unavailable"})
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        base_allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        if name not in base_allowed and not is_v6_asset:
             return self._json(404, {"error": "not-found"})
-        target = WEB / name
+        target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            return self._json(404, {"error": "not-found"})
         if not target.exists():
             return self._json(404, {"error": "not-found"})
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
-        self.send_header("cache-control", "no-store")
+        self.send_header("cache-control", "public, max-age=86400, immutable" if is_v6_asset else "no-store")
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -140,21 +169,27 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        base_allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        if name not in base_allowed and not is_v6_asset:
             self.send_response(404)
             self.end_headers()
             return
-        target = WEB / name
+        target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            self.send_response(404)
+            self.end_headers()
+            return
         if not target.exists():
             self.send_response(404)
             self.end_headers()
             return
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
-        self.send_header("cache-control", "no-store")
+        self.send_header("cache-control", "public, max-age=86400, immutable" if is_v6_asset else "no-store")
         self.send_header("x-content-type-options", "nosniff")
         self.end_headers()
 
