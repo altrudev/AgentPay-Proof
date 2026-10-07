@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from src.live import LiveConfig, LiveCoordinator, LivePaymentError
+from src.commercial_demo import release_validation_demo
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
@@ -110,6 +111,8 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/catalog":
             return self._json(200, catalog_document())
+        if path == "/api/commercial/demo":
+            return self._json(200, release_validation_demo(now=int(time.time())))
         if path == "/api/discovery":
             query = parse_qs(parsed.query)
             service_id = str(query.get("service_id", ["code-analysis-v1"])[0])
