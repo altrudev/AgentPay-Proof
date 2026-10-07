@@ -9,6 +9,7 @@ from src.commercial import (
     pareto_frontier,
     plan_commercial_action,
     plan_explanation,
+    verify_commercial_proof,
 )
 
 
@@ -216,9 +217,12 @@ class CommercialIntentTests(unittest.TestCase):
         self.assertEqual(proof["schema"], "agentpay-commercial-proof/1")
         self.assertEqual(proof["capsule_digest"], intent.digest)
         self.assertEqual(proof["plan_digest"], plan.digest)
+        self.assertEqual(verify_commercial_proof(proof), {"verdict": "VERIFIED", "errors": []})
         tampered = copy.deepcopy(proof)
         tampered["outcome"] = "different"
-        self.assertNotEqual(tampered["commercial_proof_hash"], proof["commercial_proof_hash"])
+        verdict = verify_commercial_proof(tampered)
+        self.assertEqual(verdict["verdict"], "NOT VERIFIED")
+        self.assertIn("commercial-proof-hash-mismatch", verdict["errors"])
 
     def test_commercial_proof_requires_a_selected_offer(self):
         intent = capsule()
