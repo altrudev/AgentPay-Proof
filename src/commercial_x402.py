@@ -22,6 +22,9 @@ from src.commercial_live import CapabilityRoute
 from src.live import LiveConfig
 from src.model import canonical_hash
 from src.provider_admission import ProviderAdmission, ProviderBinding, ProviderRegistry
+from src.facilitator_admission import (
+    FacilitatorAdmission, FacilitatorBinding, FacilitatorRegistry, FacilitatorTransportProof,
+)
 from src.settlement import JsonRpcClient, SettlementError
 from src.x402 import (
     EIP3009Authorization,
@@ -276,6 +279,8 @@ class CommercialX402Coordinator:
         live_config: LiveConfig,
         provider_registry: ProviderRegistry,
         facilitator: X402Facilitator,
+        facilitator_registry: FacilitatorRegistry,
+        facilitator_id: str,
         rpc: JsonRpcClient | None = None,
     ):
         self.commercial_journal = commercial_journal
@@ -283,7 +288,38 @@ class CommercialX402Coordinator:
         self.live_config = live_config.validate()
         self.provider_registry = provider_registry
         self.facilitator = facilitator
+        self.facilitator_registry = facilitator_registry
+        self.facilitator_id = str(facilitator_id).strip()
+        if not self.facilitator_id:
+            raise CommercialX402Error("facilitator-id-required")
         self.rpc = rpc or JsonRpcClient(self.live_config.rpc_url)
+
+    def _facilitator_authority(self, requirement: X402Requirement, *, now: int):
+        try:
+            binding, proof, admission = self.facilitator_registry.require(
+                self.facilitator_id,
+                scheme=requirement.scheme,
+                network=requirement.network,
+                asset_contract=requirement.asset,
+                now=now,
+            )
+        except ValueError as exc:
+            raise CommercialX402Error(str(exc)) from exc
+        runtime = {
+            "facilitator_id": getattr(self.facilitator, "facilitator_id", None),
+            "verify_url": getattr(self.facilitator, "verify_url", None),
+            "settle_url": getattr(self.facilitator, "settle_url", None),
+            "tls_spki_sha256": str(getattr(self.facilitator, "tls_spki_sha256", "")).lower(),
+        }
+        expected = {
+            "facilitator_id": binding.facilitator_id,
+            "verify_url": binding.verify_url,
+            "settle_url": binding.settle_url,
+            "tls_spki_sha256": proof.tls_spki_sha256,
+        }
+        if runtime != expected:
+            raise CommercialX402Error("x402-facilitator-runtime-binding-mismatch")
+        return binding, proof, admission
 
     def _validate_context(self, execution_id: str, context: dict[str, Any]) -> tuple[CapabilityRoute, X402Requirement, EIP3009Authorization]:
         try:
@@ -292,6 +328,9 @@ class CommercialX402Coordinator:
             authorization = EIP3009Authorization(**context["authorization"])
             binding = ProviderBinding(**context["provider_binding"])
             admission = ProviderAdmission(**context["provider_admission"])
+            facilitator_binding = FacilitatorBinding(**context["facilitator_binding"])
+            facilitator_proof = FacilitatorTransportProof(**context["facilitator_transport_proof"])
+            facilitator_admission = FacilitatorAdmission(**context["facilitator_admission"])
         except (KeyError, TypeError, ValueError) as exc:
             raise CommercialX402Error("x402-context-invalid") from exc
         if context.get("route_digest") != route.digest:
@@ -311,6 +350,16 @@ class CommercialX402Coordinator:
             raise CommercialX402Error("x402-provider-binding-context-mismatch")
         if admission.digest != route.provider_admission_digest or admission.binding_digest != binding.digest:
             raise CommercialX402Error("x402-provider-admission-context-mismatch")
+        if context.get("facilitator_binding_digest") != facilitator_binding.digest:
+            raise CommercialX402Error("x402-facilitator-binding-context-mismatch")
+        if context.get("facilitator_transport_proof_digest") != facilitator_proof.digest:
+            raise CommercialX402Error("x402-facilitator-proof-context-mismatch")
+        if context.get("facilitator_admission_digest") != facilitator_admission.digest:
+            raise CommercialX402Error("x402-facilitator-admission-context-mismatch")
+        if facilitator_admission.binding_digest != facilitator_binding.digest or facilitator_admission.transport_proof_digest != facilitator_proof.digest:
+            raise CommercialX402Error("x402-facilitator-admission-binding-mismatch")
+        if requirement.scheme not in facilitator_binding.schemes or requirement.network not in facilitator_binding.networks or requirement.asset not in facilitator_binding.asset_contracts:
+            raise CommercialX402Error("x402-facilitator-payment-scope-mismatch")
         if requirement.chain_id != route.payment_chain_id:
             raise CommercialX402Error("x402-route-chain-context-mismatch")
         if requirement.asset != route.payment_asset_contract:
@@ -329,6 +378,9 @@ class CommercialX402Coordinator:
             "authorization_digest": authorization.digest,
             "capability_payload_digest": context.get("capability_payload_digest"),
             "payment_required_digest": context.get("payment_required_digest"),
+            "facilitator_binding_digest": context.get("facilitator_binding_digest"),
+            "facilitator_transport_proof_digest": context.get("facilitator_transport_proof_digest"),
+            "facilitator_admission_digest": context.get("facilitator_admission_digest"),
             "hio": context.get("hio"),
         })
         if context.get("execution_approval_digest") != expected_approval:
@@ -421,6 +473,7 @@ class CommercialX402Coordinator:
             capsule, offers, plan, selected, grant, explanation,
             binding, admission, route, requirement,
         ) = self._route_and_requirement(grant_id, payment_required, now=now)
+        facilitator_binding, facilitator_proof, facilitator_admission = self._facilitator_authority(requirement, now=now)
         validate_reference_payload(grant, capability_payload)
         if self.commercial_journal.get(grant_id).state != "PREPARED":
             raise CommercialX402Error("x402-commercial-grant-not-prepared")
@@ -451,6 +504,7 @@ class CommercialX402Coordinator:
             "grant": grant.digest,
             "route": route.digest,
             "authorization": authorization.digest,
+            "facilitator_admission": facilitator_admission.digest,
         })[:32]
         hio = {
             "provider_id": grant.provider_id,
@@ -470,6 +524,9 @@ class CommercialX402Coordinator:
             "token_domain_name": requirement.token_name,
             "token_domain_version": requirement.token_version,
             "gas_paid_by_facilitator": True,
+            "facilitator_id": facilitator_binding.facilitator_id,
+            "facilitator_verify_url": facilitator_binding.verify_url,
+            "facilitator_settle_url": facilitator_binding.settle_url,
             "requires_wallet_signature": True,
         }
         execution_approval_digest = canonical_hash({
@@ -480,6 +537,9 @@ class CommercialX402Coordinator:
             "authorization_digest": authorization.digest,
             "capability_payload_digest": canonical_hash(capability_payload),
             "payment_required_digest": canonical_hash(payment_required),
+            "facilitator_binding_digest": facilitator_binding.digest,
+            "facilitator_transport_proof_digest": facilitator_proof.digest,
+            "facilitator_admission_digest": facilitator_admission.digest,
             "hio": hio,
         })
         input_binding_digest = canonical_hash({
@@ -501,6 +561,12 @@ class CommercialX402Coordinator:
             "capability_payload_digest": canonical_hash(capability_payload),
             "payment_required": payment_required,
             "payment_required_digest": canonical_hash(payment_required),
+            "facilitator_binding": asdict(facilitator_binding),
+            "facilitator_binding_digest": facilitator_binding.digest,
+            "facilitator_transport_proof": asdict(facilitator_proof),
+            "facilitator_transport_proof_digest": facilitator_proof.digest,
+            "facilitator_admission": asdict(facilitator_admission),
+            "facilitator_admission_digest": facilitator_admission.digest,
             "commercial_approval_digest": commercial_approval_digest,
             "execution_approval_digest": execution_approval_digest,
             "input_binding_digest": input_binding_digest,
@@ -552,6 +618,9 @@ class CommercialX402Coordinator:
             raise CommercialX402Error(str(exc)) from exc
         if binding.digest != route.provider_binding_digest or admission.digest != route.provider_admission_digest:
             raise CommercialX402Error("x402-provider-admission-changed")
+        fac_binding, fac_proof, fac_admission = self._facilitator_authority(requirement, now=now)
+        if fac_binding.digest != context["facilitator_binding_digest"] or fac_proof.digest != context["facilitator_transport_proof_digest"] or fac_admission.digest != context["facilitator_admission_digest"]:
+            raise CommercialX402Error("x402-facilitator-admission-changed")
 
         commercial = self.commercial_journal.get(record.grant_id)
         if commercial.state == "PREPARED":
@@ -588,6 +657,9 @@ class CommercialX402Coordinator:
             raise CommercialX402Error(str(exc)) from exc
         if active_binding.digest != route.provider_binding_digest or active_admission.digest != route.provider_admission_digest:
             raise CommercialX402Error("x402-provider-admission-changed")
+        fac_binding, fac_proof, fac_admission = self._facilitator_authority(requirement, now=now)
+        if fac_binding.digest != context["facilitator_binding_digest"] or fac_proof.digest != context["facilitator_transport_proof_digest"] or fac_admission.digest != context["facilitator_admission_digest"]:
+            raise CommercialX402Error("x402-facilitator-admission-changed")
         try:
             signature = validate_signature(signature)
             payment_required = context["payment_required"]
@@ -657,6 +729,9 @@ class CommercialX402Coordinator:
         self.x402_journal.transition(execution_id, "RESOURCE_EXECUTED")
 
         self.x402_journal.transition(execution_id, "SETTLEMENT_PENDING")
+        fac_binding, fac_proof, fac_admission = self._facilitator_authority(requirement, now=now)
+        if fac_binding.digest != context["facilitator_binding_digest"] or fac_proof.digest != context["facilitator_transport_proof_digest"] or fac_admission.digest != context["facilitator_admission_digest"]:
+            raise CommercialX402Error("x402-facilitator-admission-changed")
         try:
             settled = self.facilitator.settle(payload, requirement.wire())
             tx_hash = settlement_transaction(
