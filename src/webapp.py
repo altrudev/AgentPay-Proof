@@ -14,6 +14,8 @@ from src.commercial_execution import (
     CommercialExecutionError,
     CommercialExecutionJournal,
 )
+from src.commercial_live import CommercialLiveError, PaidCommercialCoordinator
+from src.execution import ExecutionJournal
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
@@ -53,13 +55,31 @@ def live_coordinator() -> LiveCoordinator:
     return LiveCoordinator(config)
 
 
-def commercial_coordinator() -> CommercialCoordinator:
+def commercial_journal() -> CommercialExecutionJournal:
     path = os.environ.get(
         "AGENTPAY_COMMERCIAL_STATE_DB",
         "agentpay-state/commercial.sqlite3",
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    return CommercialCoordinator(CommercialExecutionJournal(path))
+    return CommercialExecutionJournal(path)
+
+
+def commercial_coordinator() -> CommercialCoordinator:
+    return CommercialCoordinator(commercial_journal())
+
+
+def paid_commercial_coordinator() -> PaidCommercialCoordinator:
+    if os.environ.get("AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY", "").strip() != "1":
+        raise CommercialLiveError("paid-capability-route-not-enabled")
+    config = live_config()
+    if config is None:
+        raise CommercialLiveError("live-mode-not-configured")
+    Path(config.journal_path).parent.mkdir(parents=True, exist_ok=True)
+    return PaidCommercialCoordinator(
+        commercial_journal=commercial_journal(),
+        payment_journal=ExecutionJournal(config.journal_path),
+        live_config=config,
+    )
 
 
 class DemoSettlementProvider:
@@ -252,6 +272,73 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(proof, dict):
                     return self._json(400, {"error": "proof-required"})
                 return self._json(200, tamper_demo(proof))
+            if path == "/api/commercial/live/prepare":
+                grant_id = str(payload.get("grant_id", ""))
+                approval_digest = str(payload.get("approval_digest", ""))
+                rendered_page_digest = str(payload.get("rendered_page_digest", ""))
+                reference_digest = str(payload.get("reference_digest", ""))
+                if not all((grant_id, approval_digest, rendered_page_digest, reference_digest)):
+                    return self._json(400, {"error": "commercial-wallet-fields-required"})
+                return self._json(200, paid_commercial_coordinator().prepare_wallet(
+                    grant_id,
+                    commercial_approval_digest=approval_digest,
+                    payload={
+                        "rendered_page_digest": rendered_page_digest,
+                        "reference_digest": reference_digest,
+                    },
+                    now=int(time.time()),
+                ))
+            if path == "/api/commercial/live/confirm":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                execution_approval_digest = str(payload.get("execution_approval_digest", ""))
+                if not all((grant_id, decision_id, execution_approval_digest)):
+                    return self._json(400, {"error": "commercial-wallet-confirm-fields-required"})
+                return self._json(200, paid_commercial_coordinator().confirm_wallet(
+                    grant_id,
+                    decision_id,
+                    execution_approval_digest=execution_approval_digest,
+                    now=int(time.time()),
+                ))
+            if path == "/api/commercial/live/abort":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                if not (grant_id and decision_id):
+                    return self._json(400, {"error": "commercial-wallet-abort-fields-required"})
+                return self._json(200, paid_commercial_coordinator().abort_wallet(
+                    grant_id, decision_id
+                ))
+            if path == "/api/commercial/live/uncertain":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                if not (grant_id and decision_id):
+                    return self._json(400, {"error": "commercial-wallet-uncertain-fields-required"})
+                return self._json(200, paid_commercial_coordinator().mark_wallet_uncertain(
+                    grant_id, decision_id
+                ))
+            if path == "/api/commercial/live/reconcile":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                tx_hash = str(payload.get("transaction_hash", ""))
+                sender = str(payload.get("sender", ""))
+                if not all((grant_id, decision_id, tx_hash, sender)):
+                    return self._json(400, {"error": "commercial-wallet-reconcile-fields-required"})
+                try:
+                    return self._json(200, paid_commercial_coordinator().reconcile(
+                        grant_id,
+                        decision_id,
+                        tx_hash,
+                        sender,
+                        now=int(time.time()),
+                    ))
+                except CommercialLiveError as exc:
+                    if str(exc) == "commercial-settlement-not-observed":
+                        return self._json(409, {
+                            "error": "commercial-settlement-not-observed",
+                            "state": "IN_DOUBT",
+                            "retry": "reconcile-only",
+                        })
+                    raise
             if path == "/api/commercial/execute-demo":
                 grant_id = str(payload.get("grant_id", ""))
                 approval_digest = str(payload.get("approval_digest", ""))
@@ -315,7 +402,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise
                 return self._json(200, result)
             return self._json(404, {"error": "not-found"})
-        except (LivePaymentError, ExecutionStateError, CommercialExecutionError) as exc:
+        except (LivePaymentError, ExecutionStateError, CommercialExecutionError, CommercialLiveError) as exc:
             return self._json(409, {"error": str(exc)})
         except (ValueError, TypeError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid-request"})

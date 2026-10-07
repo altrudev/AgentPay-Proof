@@ -178,7 +178,7 @@ class CommercialExecutionBoundaryTests(unittest.TestCase):
 
     def test_payload_cannot_smuggle_unapproved_fields(self):
         out = self.coordinator.prepare(capsule(), [offer()], now=NOW + 1)
-        with self.assertRaisesRegex(CommercialExecutionError, "commercial-reference-dispatch-unknown"):
+        with self.assertRaisesRegex(CommercialExecutionError, "reference-payload-field-not-authorized"):
             self.coordinator.approve_and_execute_reference(
                 out["grant"]["grant_id"],
                 approval_digest=out["approval_digest"],
@@ -189,7 +189,7 @@ class CommercialExecutionBoundaryTests(unittest.TestCase):
                 },
                 now=NOW + 2,
             )
-        self.assertEqual(self.journal.get(out["grant"]["grant_id"]).state, "IN_DOUBT")
+        self.assertEqual(self.journal.get(out["grant"]["grant_id"]).state, "PREPARED")
 
     def test_expired_grant_cannot_execute(self):
         intent = capsule(expires_at=NOW + 3)

@@ -85,6 +85,93 @@ class WebAppTests(unittest.TestCase):
             if os.path.exists(db_path):
                 os.unlink(db_path)
 
+    def test_commercial_live_http_requires_two_exact_approvals_before_wallet_release(self):
+        temp_paths = []
+        previous = {
+            key: os.environ.get(key)
+            for key in (
+                "AGENTPAY_COMMERCIAL_STATE_DB",
+                "AGENTPAY_STATE_DB",
+                "BASE_RPC_URL",
+                "AGENTPAY_RECIPIENT_ADDRESS",
+                "AGENTPAY_USDC_ADDRESS",
+                "AGENTPAY_CHAIN_ID",
+                "AGENTPAY_MAX_AMOUNT_ATOMIC",
+                "AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY",
+            )
+        }
+        for key in ("AGENTPAY_COMMERCIAL_STATE_DB", "AGENTPAY_STATE_DB"):
+            fd, path = tempfile.mkstemp()
+            os.close(fd)
+            os.unlink(path)
+            temp_paths.append(path)
+            os.environ[key] = path
+        os.environ["BASE_RPC_URL"] = "https://rpc.example"
+        os.environ["AGENTPAY_RECIPIENT_ADDRESS"] = "0x000000000000000000000000000000000000beef"
+        os.environ["AGENTPAY_USDC_ADDRESS"] = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+        os.environ["AGENTPAY_CHAIN_ID"] = "8453"
+        os.environ["AGENTPAY_MAX_AMOUNT_ATOMIC"] = "1000000"
+        os.environ["AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY"] = "1"
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            with urlopen(base + "/api/commercial/prepare-demo") as r:
+                commercial = json.load(r)
+
+            prepare_payload = json.dumps({
+                "grant_id": commercial["grant"]["grant_id"],
+                "approval_digest": commercial["approval_digest"],
+                "rendered_page_digest": "rendered:test",
+                "reference_digest": "reference:test",
+            }).encode()
+            req = Request(
+                base + "/api/commercial/live/prepare",
+                data=prepare_payload,
+                method="POST",
+                headers={"content-type": "application/json"},
+            )
+            with urlopen(req) as r:
+                prepared = json.load(r)
+
+            self.assertEqual(prepared["status"], "AWAITING_EXECUTION_APPROVAL")
+            self.assertIsNone(prepared["wallet_request"])
+            self.assertTrue(prepared["execution_approval_digest"])
+
+            confirm_payload = json.dumps({
+                "grant_id": prepared["grant_id"],
+                "payment_decision_id": prepared["payment_decision_id"],
+                "execution_approval_digest": prepared["execution_approval_digest"],
+            }).encode()
+            req = Request(
+                base + "/api/commercial/live/confirm",
+                data=confirm_payload,
+                method="POST",
+                headers={"content-type": "application/json"},
+            )
+            with urlopen(req) as r:
+                confirmed = json.load(r)
+
+            self.assertEqual(confirmed["status"], "AWAITING_WALLET")
+            self.assertEqual(confirmed["wallet_request"]["chainId"], hex(8453))
+            self.assertEqual(
+                confirmed["wallet_request"]["to"],
+                "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            for path in temp_paths:
+                if os.path.exists(path):
+                    os.unlink(path)
+
     def test_catalog_endpoint_is_truthful_and_machine_readable(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

@@ -306,7 +306,7 @@ def _approval_digest(grant: CommercialGrant, explanation: dict[str, Any]) -> str
     })
 
 
-def _reference_capability_execute(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
+def validate_reference_payload(grant: CommercialGrant, payload: dict[str, Any]) -> None:
     if grant.capability != "browser.render.verify":
         raise CommercialExecutionError("reference-capability-unsupported")
     if set(payload) - {"rendered_page_digest", "reference_digest"}:
@@ -315,6 +315,17 @@ def _reference_capability_execute(grant: CommercialGrant, payload: dict[str, Any
     reference = str(payload.get("reference_digest", "")).strip()
     if not rendered or not reference:
         raise CommercialExecutionError("reference-payload-required")
+
+
+def execute_reference_capability(
+    grant: CommercialGrant,
+    payload: dict[str, Any],
+    *,
+    action_id: str | None = None,
+) -> ReferenceCapabilityResult:
+    validate_reference_payload(grant, payload)
+    rendered = str(payload["rendered_page_digest"]).strip()
+    reference = str(payload["reference_digest"]).strip()
 
     artifact = {
         "capability": grant.capability,
@@ -334,13 +345,13 @@ def _reference_capability_execute(grant: CommercialGrant, payload: dict[str, Any
         "artifact_digest": canonical_hash(artifact),
         "evidence": ["execution_receipt", "visual_diff"],
     }
-    action_id = "action:" + canonical_hash(action_receipt)[:32]
-    action_receipt["action_id"] = action_id
+    resolved_action_id = action_id or ("action:" + canonical_hash(action_receipt)[:32])
+    action_receipt["action_id"] = resolved_action_id
     action_receipt["action_proof_hash"] = canonical_hash(action_receipt)
-    return ReferenceCapabilityResult(action_id, action_receipt, artifact)
+    return ReferenceCapabilityResult(resolved_action_id, action_receipt, artifact)
 
 
-def _assess_reference_outcome(
+def assess_reference_outcome(
     capsule: CommercialIntentCapsule,
     grant: CommercialGrant,
     result: ReferenceCapabilityResult,
@@ -477,6 +488,8 @@ class CommercialCoordinator:
         if now > grant.expires_at:
             raise CommercialExecutionError("commercial-grant-expired")
 
+        validate_reference_payload(grant, payload)
+
         current = self.journal.get(grant_id)
         if current.state == "PREPARED":
             self.journal.approve(grant_id, approval_digest)
@@ -484,13 +497,13 @@ class CommercialCoordinator:
             raise CommercialExecutionError(f"commercial-execution-not-approvable:{current.state}")
 
         try:
-            result = _reference_capability_execute(grant, payload)
+            result = execute_reference_capability(grant, payload)
         except Exception as exc:
             self.journal.mark_in_doubt(grant_id)
             raise CommercialExecutionError("commercial-reference-dispatch-unknown") from exc
 
         self.journal.mark_dispatched(grant_id, result.action_id)
-        assessment = _assess_reference_outcome(capsule, grant, result, now=now)
+        assessment = assess_reference_outcome(capsule, grant, result, now=now)
         if assessment.verdict != "PASS":
             self.journal.mark_in_doubt(grant_id, result.action_id)
             raise CommercialExecutionError("commercial-outcome-not-satisfied")
@@ -613,3 +626,68 @@ def verify_commercial_bundle(
         "verdict": "VERIFIED" if not errors else "NOT VERIFIED",
         "errors": sorted(set(errors)),
     }
+
+
+def reconstruct_commercial_context(
+    journal: CommercialExecutionJournal,
+    grant_id: str,
+    *,
+    now: int,
+) -> tuple[
+    CommercialIntentCapsule,
+    tuple[CapabilityOffer, ...],
+    CommercialPlan,
+    CapabilityOffer,
+    CommercialGrant,
+    dict[str, Any],
+]:
+    data = journal.context(grant_id)
+    capsule = CommercialIntentCapsule(**data["capsule"])
+    offers = tuple(CapabilityOffer(**item) for item in data["offers"])
+    raw = data["plan"]
+    plan = CommercialPlan(
+        capsule_digest=raw["capsule_digest"],
+        selected_offer_digest=raw["selected_offer_digest"],
+        selected_offer_id=raw["selected_offer_id"],
+        permitted_offer_ids=tuple(raw["permitted_offer_ids"]),
+        rejected=tuple(
+            OfferEvaluation(
+                offer_id=item["offer_id"],
+                decision=item["decision"],
+                reasons=tuple(item["reasons"]),
+                disclosure_count=item["disclosure_count"],
+            )
+            for item in raw["rejected"]
+        ),
+        frontier_offer_ids=tuple(raw["frontier_offer_ids"]),
+        requires_human_approval=raw["requires_human_approval"],
+        reason=raw["reason"],
+    )
+    if not plan.selected_offer_id:
+        raise CommercialExecutionError("commercial-selected-offer-missing")
+    try:
+        selected = next(offer for offer in offers if offer.offer_id == plan.selected_offer_id)
+    except StopIteration as exc:
+        raise CommercialExecutionError("commercial-selected-offer-missing") from exc
+
+    projection_time = min(now, capsule.expires_at, selected.expires_at)
+    grant = project_commercial_grant(
+        capsule,
+        plan,
+        selected,
+        now=projection_time,
+    )
+    if grant.grant_id != grant_id:
+        raise CommercialExecutionError("commercial-grant-reconstruction-mismatch")
+    persisted_grant = data.get("grant")
+    if (
+        not isinstance(persisted_grant, dict)
+        or canonical_hash(persisted_grant) != canonical_hash(asdict(grant))
+    ):
+        raise CommercialExecutionError("commercial-grant-context-mismatch")
+    explanation = data.get("explanation")
+    if not isinstance(explanation, dict):
+        raise CommercialExecutionError("commercial-explanation-missing")
+    if plan_explanation(capsule, offers, plan) != explanation:
+        raise CommercialExecutionError("commercial-explanation-binding-mismatch")
+    return capsule, offers, plan, selected, grant, explanation
