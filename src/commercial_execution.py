@@ -317,7 +317,12 @@ def validate_reference_payload(grant: CommercialGrant, payload: dict[str, Any]) 
         raise CommercialExecutionError("reference-payload-required")
 
 
-def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
+def execute_reference_capability(
+    grant: CommercialGrant,
+    payload: dict[str, Any],
+    *,
+    action_id: str | None = None,
+) -> ReferenceCapabilityResult:
     validate_reference_payload(grant, payload)
     rendered = str(payload["rendered_page_digest"]).strip()
     reference = str(payload["reference_digest"]).strip()
@@ -340,10 +345,10 @@ def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]
         "artifact_digest": canonical_hash(artifact),
         "evidence": ["execution_receipt", "visual_diff"],
     }
-    action_id = "action:" + canonical_hash(action_receipt)[:32]
-    action_receipt["action_id"] = action_id
+    resolved_action_id = action_id or ("action:" + canonical_hash(action_receipt)[:32])
+    action_receipt["action_id"] = resolved_action_id
     action_receipt["action_proof_hash"] = canonical_hash(action_receipt)
-    return ReferenceCapabilityResult(action_id, action_receipt, artifact)
+    return ReferenceCapabilityResult(resolved_action_id, action_receipt, artifact)
 
 
 def assess_reference_outcome(
