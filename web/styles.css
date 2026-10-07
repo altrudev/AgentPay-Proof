@@ -29,3 +29,48 @@ body.dim .stage{filter:brightness(.82) saturate(.92)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 .stage-state span:nth-child(1){left:34px}.stage-state span:nth-child(2){left:238px}.stage-state span:nth-child(3){left:442px}.stage-state span:nth-child(4){left:646px}.stage-state span:nth-child(5){left:850px}.stage-state span:nth-child(6){left:1054px}.stage-state span:nth-child(7){left:1258px}
+
+
+/* DDC/Frequency/HIO interaction layer: overlays only, approved scene geometry unchanged. */
+.work-dialog{
+  width:min(720px,92vw);
+  border:1px solid rgba(95,175,236,.42);
+  border-radius:10px;
+  background:linear-gradient(180deg,rgba(5,20,34,.98),rgba(2,10,19,.99));
+  color:#eef7ff;
+  padding:0;
+  box-shadow:0 28px 90px rgba(0,0,0,.66),0 0 42px rgba(23,149,255,.12);
+}
+.work-dialog::backdrop{background:rgba(0,5,12,.78);backdrop-filter:blur(3px)}
+.work-dialog form{padding:22px}
+.work-dialog header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;border-bottom:1px solid rgba(104,170,224,.18)}
+.work-dialog header small{display:block;margin-bottom:4px;color:#28caff;font:9px ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:1.2px}
+.work-dialog header h2{margin:0;font:700 18px ui-monospace,SFMono-Regular,Consolas,monospace}
+.work-dialog header>button{border:0;background:transparent;color:#fff;font-size:24px;line-height:1;cursor:pointer}
+.work-dialog p{color:#b8c8d6;line-height:1.55;font-size:13px}
+.service-meta{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.service-meta span{padding:6px 8px;border:1px solid rgba(92,160,217,.28);border-radius:5px;background:rgba(8,29,47,.7);color:#cde4f5;font:10px ui-monospace,SFMono-Regular,Consolas,monospace}
+.work-dialog label{display:block;margin:14px 0 7px;color:#dce9f4;font-size:12px;font-weight:600}
+.work-dialog textarea{
+  width:100%;resize:vertical;min-height:130px;max-height:290px;
+  border:1px solid rgba(100,173,230,.32);border-radius:7px;
+  background:#020b13;color:#edf7ff;padding:12px 13px;
+  font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+  outline:none;
+}
+.work-dialog textarea:focus{border-color:#36cfff;box-shadow:0 0 0 2px rgba(54,207,255,.10)}
+.dialog-note{margin-top:10px;padding-left:11px;border-left:2px solid rgba(35,190,255,.62);color:#8ea6b9;font-size:10px;line-height:1.55}
+.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+.dialog-actions button{
+  min-height:38px;padding:0 14px;border:1px solid rgba(110,176,229,.34);
+  border-radius:6px;background:#071827;color:#dbe9f4;
+  font:700 10px ui-monospace,SFMono-Regular,Consolas,monospace;cursor:pointer;
+}
+.dialog-actions .primary-action{background:#f5f9fc;color:#07111b;border-color:#fff}
+.evidence-actions{margin-top:12px;margin-bottom:12px}
+#evidence-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:16px 0}
+#evidence-grid article{padding:10px;border:1px solid rgba(99,166,220,.22);border-radius:5px;background:rgba(3,15,26,.7)}
+#evidence-grid small{display:block;margin-bottom:4px;color:#2ac9ff;font:9px ui-monospace,SFMono-Regular,Consolas,monospace}
+#evidence-grid div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:#d9e8f3}
+#evidence-json{max-height:300px;overflow:auto;margin:0;background:#020811;padding:12px;border:1px solid rgba(98,165,222,.2);font-size:10px;line-height:1.5}
+.service:focus-visible,.rail button:focus-visible,.rail a:focus-visible,.cta button:focus-visible,.top-actions button:focus-visible{outline:2px solid #5bdcff;outline-offset:2px}
