@@ -51,13 +51,34 @@ def spatial_coverage(a: Image.Image, b: Image.Image, cols: int = 4, rows: int = 
     return sum(sims)/len(sims)
 
 
+def spatial_edge_similarity(a: Image.Image, b: Image.Image, cols: int = 4, rows: int = 4) -> float:
+    def cells(img: Image.Image) -> list[float]:
+        edge = ImageOps.grayscale(fit(img, (320, 180))).filter(ImageFilter.FIND_EDGES)
+        cw, ch = 80, 45
+        out = []
+        for y in range(rows):
+            for x in range(cols):
+                crop = edge.crop((x*cw, y*ch, (x+1)*cw, (y+1)*ch))
+                out.append(sum(ImageStat.Stat(crop).mean) / 255.0)
+        return out
+    aa, bb = cells(a), cells(b)
+    sims = []
+    for x, y in zip(aa, bb):
+        if x < .005:
+            sims.append(1.0 if y < .005 else max(0.0, 1.0-y))
+        else:
+            sims.append(max(0.0, 1.0-min(1.0, abs(x-y)/x)))
+    return sum(sims)/len(sims)
+
+
 def compare(reference: Image.Image, candidate: Image.Image) -> dict:
     coarse = mae_similarity(reference, candidate, (80, 45))
     medium = mae_similarity(reference, candidate, (320, 180))
     edges = edge_similarity(reference, candidate)
     spatial = spatial_coverage(reference, candidate)
+    spatial_edges = spatial_edge_similarity(reference, candidate)
     aspect = 1.0 - min(1.0, abs((reference.width/reference.height)-(candidate.width/candidate.height))/(reference.width/reference.height))
-    score = .31*coarse + .31*medium + .18*edges + .14*spatial + .06*aspect
+    score = .24*coarse + .24*medium + .16*edges + .12*spatial + .18*spatial_edges + .06*aspect
     return {
         "score": round(score, 6),
         "metrics": {
@@ -65,6 +86,7 @@ def compare(reference: Image.Image, candidate: Image.Image) -> dict:
             "medium_similarity": round(medium, 6),
             "edge_similarity": round(edges, 6),
             "spatial_coverage_similarity": round(spatial, 6),
+            "spatial_edge_similarity": round(spatial_edges, 6),
             "aspect_similarity": round(aspect, 6),
         },
         "reference": [reference.width, reference.height],
