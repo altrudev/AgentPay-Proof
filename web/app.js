@@ -15,7 +15,11 @@ const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
 function fitStage(){
  const stage=document.querySelector(".shell");
- const scale=Math.min(innerWidth/1672,innerHeight/941);
+ if(matchMedia("(max-width:900px)").matches){
+  stage.style.transform="";
+  return;
+ }
+ const scale=Math.min(innerWidth/1672,innerHeight/940);
  stage.style.transform="translate(-50%,-50%) scale("+scale+")";
 }
 function showStatus(title,message,actions=[]){
