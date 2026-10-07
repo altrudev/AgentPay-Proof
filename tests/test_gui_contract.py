@@ -9,7 +9,6 @@ JS = (ROOT / "web" / "app.js").read_text()
 ASSETS = [
     "agentpay-logo.svg",
     "hero-background.webp",
-    "flow-background.webp",
     "vyshyvanka-bridge-exact.webp",
     "proof-card-fan.svg",
     "icon-intent.svg",
@@ -53,13 +52,18 @@ class ApprovedGuiContractTests(unittest.TestCase):
     def test_interface_uses_v6_layered_assets(self):
         for name in ASSETS:
             self.assertIn(f"/assets/approved-v6/{name}", HTML)
+        self.assertNotIn("/assets/approved-v6/flow-background.webp", HTML)
         for old in ["/approved/", "/assets/approved-v5/"]:
             self.assertNotIn(old, HTML)
 
     def test_reference_geometry_is_locked(self):
         self.assertIn("width:1672px;height:940px", CSS)
         self.assertIn("left:198px;top:112px;width:1474px;height:782px", CSS)
-        self.assertIn("top:309px;width:1474px;height:191px", CSS)
+        self.assertIn("top:309px;width:100%;height:191px", CSS)
+
+    def test_workflow_has_one_visual_flow_not_a_second_river_plate(self):
+        self.assertNotIn("flow-background.webp", HTML)
+        self.assertIn(".flow-line{position:absolute", CSS)
 
     def test_runtime_truth_remains_live(self):
         for target in ["network-block", "network-gas", "network-rpc", "wallet-state", "activity-list"]:
