@@ -139,7 +139,8 @@ class Handler(BaseHTTPRequestHandler):
         name = "index.html" if path == "/" else path.lstrip("/")
         allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
         is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
-        if name not in allowed and not is_graphic:
+        is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved:
             return self._json(404, {"error": "not-found"})
         target = (WEB / name).resolve()
         if WEB.resolve() not in target.parents and target != WEB.resolve():
@@ -172,7 +173,8 @@ class Handler(BaseHTTPRequestHandler):
         name = "index.html" if path == "/" else path.lstrip("/")
         allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
         is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
-        if name not in allowed and not is_graphic:
+        is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved:
             self.send_response(404)
             self.end_headers()
             return
