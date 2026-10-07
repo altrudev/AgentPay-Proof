@@ -239,14 +239,37 @@ def reference_provider_registry(
     payment_recipient: str,
     now: int,
 ) -> ProviderRegistry:
-    registry = ProviderRegistry()
-    admission = registry.admit(
-        reference_provider_binding(
-            payment_recipient=payment_recipient,
-            now=now,
+    # Stable test/reference binding: its digest must not change between
+    # prepare, confirm and reconcile requests.
+    binding = ProviderBinding(
+        provider_id="provider:render-only",
+        legal_identity="REFERENCE-ONLY / AgentPay test fixture",
+        capability="browser.render.verify",
+        adapter_id="reference.browser-render.verify/1",
+        request_schema="agentpay-render-verify-request/1",
+        response_schema="agentpay-render-verify-result/1",
+        observation_schema="agentpay-render-verify-observation/1",
+        payment_recipient=payment_recipient,
+        settlement_asset="USDC",
+        allowed_disclosures=("rendered_page",),
+        maximum_retention_seconds=0,
+        evidence_types=(
+            "execution_receipt",
+            "result_observation",
+            "settlement_observation",
         ),
-        now=now,
+        idempotency_model="single-use-request-id",
+        cancellation_model="cancel-before-dispatch",
+        observation_model="independent-fetch",
+        jurisdiction="CA",
+        valid_from=0,
+        valid_until=4_102_444_800,
+        version=1,
     )
+    if now > binding.valid_until:
+        raise RuntimeError("reference-provider-binding-expired")
+    registry = ProviderRegistry()
+    admission = registry.admit(binding, now=0)
     if admission.decision != "ADMIT":
         raise RuntimeError("reference-provider-binding-not-admitted")
     return registry
