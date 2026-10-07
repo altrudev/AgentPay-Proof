@@ -306,7 +306,7 @@ def _approval_digest(grant: CommercialGrant, explanation: dict[str, Any]) -> str
     })
 
 
-def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
+def validate_reference_payload(grant: CommercialGrant, payload: dict[str, Any]) -> None:
     if grant.capability != "browser.render.verify":
         raise CommercialExecutionError("reference-capability-unsupported")
     if set(payload) - {"rendered_page_digest", "reference_digest"}:
@@ -315,6 +315,12 @@ def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]
     reference = str(payload.get("reference_digest", "")).strip()
     if not rendered or not reference:
         raise CommercialExecutionError("reference-payload-required")
+
+
+def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
+    validate_reference_payload(grant, payload)
+    rendered = str(payload["rendered_page_digest"]).strip()
+    reference = str(payload["reference_digest"]).strip()
 
     artifact = {
         "capability": grant.capability,
@@ -476,6 +482,8 @@ class CommercialCoordinator:
             raise CommercialExecutionError("commercial-grant-reconstruction-mismatch")
         if now > grant.expires_at:
             raise CommercialExecutionError("commercial-grant-expired")
+
+        validate_reference_payload(grant, payload)
 
         current = self.journal.get(grant_id)
         if current.state == "PREPARED":
