@@ -10,9 +10,9 @@ class ApprovedV6GuiTests(unittest.TestCase):
     def test_exact_approved_v6_assets_exist(self):
         root = ROOT / "web" / "assets" / "approved-v6"
         names = [
-            "agentpay-logo.svg","hero-background.webp","vyshyvanka-bridge.svg",
-            "proof-card-fan.svg","icon-intent.svg","icon-quote.svg","icon-authority.svg",
-            "icon-settlement.svg","icon-execution.svg","icon-observation.svg","icon-proof.svg",
+            "agentpay-mark.png","hero-background.webp","vyshyvanka-bridge.png",
+            "proof-card-fan.png","icon-intent.png","icon-quote.png","icon-authority.png",
+            "icon-settlement.png","icon-execution.png","icon-observation.png","icon-proof.png",
             "service-code-analysis.webp","service-data-research.webp","service-3d-generation.webp",
         ]
         for name in names:
@@ -28,9 +28,9 @@ class ApprovedV6GuiTests(unittest.TestCase):
     def test_interface_uses_regenerated_art(self):
         html = (ROOT / "web" / "index.html").read_text()
         self.assertIn("/assets/approved-v6/hero-background.webp", html)
-        self.assertIn("/assets/approved-v6/agentpay-logo.svg", html)
-        self.assertIn("/assets/approved-v6/vyshyvanka-bridge.svg", html)
-        self.assertIn("/assets/approved-v6/proof-card-fan.svg", html)
+        self.assertIn("/assets/approved-v6/agentpay-mark.png", html)
+        self.assertIn("/assets/approved-v6/vyshyvanka-bridge.png", html)
+        self.assertIn("/assets/approved-v6/proof-card-fan.png", html)
 
     def test_runtime_truth_is_not_baked_into_art(self):
         html = (ROOT / "web" / "index.html").read_text()
