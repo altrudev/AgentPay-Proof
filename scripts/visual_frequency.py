@@ -63,6 +63,43 @@ def _coverage_similarity(reference: Image.Image, candidate: Image.Image) -> tupl
     return max(0.0, 1.0 - min(1.0, delta)), ref, cand
 
 
+def _spatial_coverage_similarity(
+    reference: Image.Image,
+    candidate: Image.Image,
+    *,
+    cols: int = 4,
+    rows: int = 4,
+    size: tuple[int, int] = (256, 144),
+) -> float:
+    def cells(image: Image.Image) -> list[float]:
+        gray = ImageOps.grayscale(_fit(image, size))
+        values = []
+        cell_w = size[0] // cols
+        cell_h = size[1] // rows
+        for row in range(rows):
+            for col in range(cols):
+                box = (
+                    col * cell_w,
+                    row * cell_h,
+                    size[0] if col == cols - 1 else (col + 1) * cell_w,
+                    size[1] if row == rows - 1 else (row + 1) * cell_h,
+                )
+                hist = gray.crop(box).histogram()
+                pixels = (box[2] - box[0]) * (box[3] - box[1])
+                values.append(sum(hist[19:]) / float(pixels))
+        return values
+
+    ref = cells(reference)
+    cand = cells(candidate)
+    similarities = []
+    for r, c in zip(ref, cand):
+        if r <= 0.01:
+            similarities.append(1.0 if c <= 0.01 else max(0.0, 1.0 - c))
+        else:
+            similarities.append(max(0.0, 1.0 - min(1.0, abs(r - c) / r)))
+    return sum(similarities) / len(similarities)
+
+
 def _aspect_similarity(reference: Image.Image, candidate: Image.Image) -> float:
     ra = reference.width / reference.height
     ca = candidate.width / candidate.height
@@ -74,14 +111,16 @@ def compare(reference: Image.Image, candidate: Image.Image) -> dict:
     medium = _mae_similarity(reference, candidate, (256, 144))
     edge = _edge_similarity(reference, candidate)
     coverage, ref_coverage, candidate_coverage = _coverage_similarity(reference, candidate)
+    spatial = _spatial_coverage_similarity(reference, candidate)
     aspect = _aspect_similarity(reference, candidate)
 
     score = (
-        0.30 * coarse
-        + 0.28 * medium
-        + 0.18 * edge
-        + 0.16 * coverage
-        + 0.08 * aspect
+        0.27 * coarse
+        + 0.25 * medium
+        + 0.17 * edge
+        + 0.13 * coverage
+        + 0.12 * spatial
+        + 0.06 * aspect
     )
 
     return {
@@ -91,6 +130,7 @@ def compare(reference: Image.Image, candidate: Image.Image) -> dict:
             "medium_similarity": round(medium, 6),
             "edge_similarity": round(edge, 6),
             "coverage_similarity": round(coverage, 6),
+            "spatial_coverage_similarity": round(spatial, 6),
             "aspect_similarity": round(aspect, 6),
             "reference_coverage": round(ref_coverage, 6),
             "candidate_coverage": round(candidate_coverage, 6),
