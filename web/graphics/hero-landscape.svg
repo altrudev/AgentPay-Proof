@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1474 610" role="img" aria-label="AgentPay evidence landscape">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#06192b"/><stop offset=".52" stop-color="#03111f"/><stop offset="1" stop-color="#020914"/></linearGradient>
+ <linearGradient id="m1" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#154d7a"/><stop offset=".72" stop-color="#071a2d"/><stop offset="1" stop-color="#03101d"/></linearGradient>
+ <linearGradient id="m2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#0e3558"/><stop offset="1" stop-color="#06131f"/></linearGradient>
+ <linearGradient id="river" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#068cff"/><stop offset=".38" stop-color="#dff8ff"/><stop offset=".63" stop-color="#39c9ff"/><stop offset="1" stop-color="#0788ff"/></linearGradient>
+ <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#4ad4ff"/><stop offset=".52" stop-color="#ffe7a0"/><stop offset="1" stop-color="#38c6ff"/></linearGradient>
+ <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M0 14 14 0 28 14 14 28Z" fill="none" stroke="#63d5ff" stroke-opacity=".18"/><circle cx="14" cy="14" r="1.3" fill="#eefcff" fill-opacity=".55"/></pattern>
+ <pattern id="vysh" width="34" height="34" patternUnits="userSpaceOnUse">
+  <rect width="34" height="34" fill="#06172b"/>
+  <path d="M17 1 33 17 17 33 1 17Z" fill="none" stroke="#eafaff" stroke-width="2.4"/>
+  <path d="M17 6 28 17 17 28 6 17Z" fill="none" stroke="#159dff" stroke-width="3"/>
+  <rect x="13" y="13" width="8" height="8" transform="rotate(45 17 17)" fill="#79deff"/>
+ </pattern>
+ <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1474" height="610" fill="url(#bg)"/>
+<ellipse cx="1040" cy="160" rx="520" ry="220" fill="#147fd0" opacity=".10" filter="url(#soft)"/>
+<rect width="1474" height="610" fill="url(#grid)" opacity=".25"/>
+
+<!-- mountains -->
+<path d="M260 340 430 205 520 300 630 150 730 292 850 205 965 319 1070 168 1188 294 1320 195 1474 330 1474 610 260 610Z" fill="url(#m2)" opacity=".95"/>
+<path d="M110 365 300 228 420 345 560 186 720 338 865 214 1005 350 1130 252 1260 350 1390 236 1474 312 1474 610 110 610Z" fill="url(#m1)" opacity=".83"/>
+<g fill="none" stroke-linecap="round">
+ <path d="M110 365 300 228 420 345 560 186 720 338 865 214 1005 350 1130 252 1260 350 1390 236 1474 312" stroke="#e9faff" stroke-opacity=".72" stroke-width="2"/>
+ <path d="M300 228 270 274 302 256 326 295 352 271M560 186 523 241 557 220 589 255 617 222M865 214 828 267 864 246 897 280 925 247M1390 236 1357 285 1391 262 1417 289" stroke="#f7fdff" stroke-opacity=".52" stroke-width="1.6"/>
+ <path d="M110 365 300 228M420 345 560 186M720 338 865 214M1005 350 1130 252M1260 350 1390 236" stroke="#2ba9ff" stroke-opacity=".40"/>
+</g>
+
+<!-- river/evidence streams -->
+<g fill="none" filter="url(#glow)">
+ <path d="M-40 425 C180 352 325 490 520 424 S795 332 980 404 S1250 520 1510 422" stroke="#0a8cff" stroke-opacity=".22" stroke-width="34"/>
+ <path d="M-40 421 C185 360 330 486 522 420 S792 337 978 406 S1250 512 1510 420" stroke="url(#river)" stroke-width="4.2"/>
+ <path d="M-30 448 C180 385 340 520 548 442 S820 354 1010 432 S1258 542 1510 446" stroke="#5fdcff" stroke-opacity=".58" stroke-width="1.6"/>
+ <path d="M-20 397 C200 338 336 455 520 401 S785 317 980 391 S1260 490 1500 399" stroke="url(#gold)" stroke-opacity=".86" stroke-width="2.3"/>
+ <path d="M-10 469 C190 414 350 544 560 465 S830 383 1035 455 S1280 555 1512 470" stroke="#0f99ff" stroke-opacity=".46" stroke-width="1.1"/>
+</g>
+
+<!-- particles -->
+<g fill="#66d8ff" opacity=".9">
+ <circle cx="120" cy="410" r="2"/><rect x="185" y="392" width="5" height="5"/><circle cx="248" cy="448" r="2.5"/><rect x="330" y="426" width="4" height="4"/><circle cx="390" cy="468" r="2"/>
+ <rect x="475" y="398" width="5" height="5"/><circle cx="540" cy="434" r="2"/><rect x="620" y="372" width="4" height="4"/><circle cx="690" cy="405" r="2.2"/><rect x="760" y="450" width="5" height="5"/>
+ <circle cx="840" cy="382" r="2"/><rect x="925" y="420" width="5" height="5"/><circle cx="1010" cy="465" r="2.4"/><rect x="1088" y="402" width="4" height="4"/><circle cx="1170" cy="446" r="2.2"/>
+ <rect x="1245" y="483" width="5" height="5"/><circle cx="1324" cy="426" r="2.2"/><rect x="1400" y="458" width="4" height="4"/>
+</g>
+<g fill="#eefcff" opacity=".75"><rect x="155" y="435" width="3" height="3"/><rect x="510" y="460" width="3" height="3"/><rect x="785" y="394" width="3" height="3"/><rect x="1110" y="472" width="3" height="3"/><rect x="1365" y="408" width="3" height="3"/></g>
+
+<!-- structural vyshyvanka bridge -->
+<g>
+ <rect x="900" y="0" width="138" height="408" fill="url(#vysh)" opacity=".96"/>
+ <rect x="900" y="0" width="138" height="408" fill="none" stroke="#8de5ff" stroke-opacity=".58"/>
+ <path d="M1000 366 C1065 400 1112 432 1178 496 C1088 472 1031 448 948 408Z" fill="url(#vysh)" opacity=".84"/>
+</g>
+
+<!-- proof glass fan -->
+<g fill="#7fcfff" fill-opacity=".055" stroke="#8ddcff" stroke-opacity=".42">
+ <rect x="1190" y="96" width="64" height="202"/><rect x="1235" y="112" width="64" height="202"/><rect x="1280" y="128" width="64" height="202"/><rect x="1325" y="144" width="64" height="202"/><rect x="1370" y="160" width="64" height="202"/>
+</g>
+<g fill="none" stroke="#a9ebff" stroke-opacity=".72"><path d="M1219 173l8-8 8 8-8 8zM1264 199l8-8 8 8-8 8zM1309 225l8-8 8 8-8 8zM1354 251l8-8 8 8-8 8zM1399 277l8-8 8 8-8 8z"/></g>
+</svg>

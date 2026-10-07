@@ -8,7 +8,7 @@ import uuid
 from src.execution import ExecutionJournal, ExecutionStateError
 from src.model import Authority, Intent, Quote, make_proof, decide
 from src.observer import IndependentObserver
-from src.service import QUOTE_TTL_SECONDS, SERVICE_ID, ServiceRequest, execute
+from src.service import QUOTE_TTL_SECONDS, SERVICE_SPECS, ServiceRequest, execute, resolve_service_id
 from src.settlement import JsonRpcClient, SettlementError, transaction_request
 from src.verifier import verify
 
@@ -61,24 +61,28 @@ class LiveCoordinator:
         self.rpc = JsonRpcClient(config.rpc_url)
         self.observer = IndependentObserver(config.observer_id)
 
-    def prepare(self, document: str, *, amount_atomic: int, agent_id: str,
-                now: int | None = None) -> dict:
+    def prepare(self, document: str, *, amount_atomic: int | None, agent_id: str,
+                service_id: str = "code-analysis-v1", now: int | None = None) -> dict:
         now = int(time.time()) if now is None else now
-        request = ServiceRequest(document)
+        service_id = resolve_service_id(service_id)
+        request = ServiceRequest(document, service_id)
+        price = SERVICE_SPECS[service_id]["price_atomic"]
+        if amount_atomic is not None and amount_atomic != price:
+            raise LivePaymentError("service-price-mismatch")
         quote = Quote(
             quote_id=f"live-q-{uuid.uuid4()}",
-            service_id=SERVICE_ID,
+            service_id=service_id,
             recipient=_address(self.config.recipient),
             chain_id=self.config.chain_id,
             asset_contract=_address(self.config.asset_contract),
-            amount_atomic=amount_atomic,
+            amount_atomic=price,
             expires_at=now + QUOTE_TTL_SECONDS,
             request_digest=request.digest,
         )
         intent = Intent(
             intent_id="live-intent:" + request.digest[:24],
             agent_id=agent_id,
-            service_id=SERVICE_ID,
+            service_id=service_id,
             request_digest=request.digest,
             created_at=now,
         )
@@ -88,7 +92,7 @@ class LiveCoordinator:
             decision_id=f"live-decision-{uuid.uuid4()}",
             maximum_amount_atomic=self.config.maximum_amount_atomic,
             recipient=quote.recipient,
-            service_id=SERVICE_ID,
+            service_id=service_id,
             chain_id=self.config.chain_id,
             asset_contract=quote.asset_contract,
             expires_at=quote.expires_at,
@@ -107,6 +111,7 @@ class LiveCoordinator:
         tx = transaction_request(authority, quote, now=now)
         context = json.dumps({
             "document": document,
+            "service_id": service_id,
             "agent_id": agent_id,
             "prepared_at": now,
             "intent": asdict(intent),
@@ -188,7 +193,7 @@ class LiveCoordinator:
         else:
             raise LivePaymentError(f"observation-not-allowed:{current.state}")
 
-        request = ServiceRequest(data["document"])
+        request = ServiceRequest(data["document"], data.get("service_id", quote.service_id))
         # Service execution is bound to the original request/quote. The dispatch
         # was authorized before expiry; reconciliation may finish later.
         artifact, result = execute(

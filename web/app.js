@@ -1,204 +1,458 @@
-const stages=[
-["01","Intent","Agent requests a service","doc"],
-["02","Quote","Get price and allowed scope","sliders"],
-["03","Authority","Verify policy and limits","shield"],
-["04","Settlement","USDC transaction on Base","coin"],
-["05","Execution","Service runs in boundary","code"],
-["06","Observation","Independent verification","eye"],
-["07","Proof","Get verifiable evidence","hash"]
-];
-let currentProof=null;
-let liveConfig={enabled:false};
 const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 const short=(v,n=20)=>{v=String(v??"");return v.length>n?v.slice(0,n)+"…":v};
-const icon=name=>{
- const path={
-  doc:'<path d="M8 4h10l6 6v18H8z"/><path d="M18 4v7h6"/><path d="M12 17h8M12 21h8"/>',
-  sliders:'<path d="M6 9h20M6 16h20M6 23h20"/><circle cx="12" cy="9" r="2.5"/><circle cx="21" cy="16" r="2.5"/><circle cx="15" cy="23" r="2.5"/>',
-  shield:'<path d="M16 4 26 8v7c0 7-4.4 11-10 14-5.6-3-10-7-10-14V8z"/><path d="m12 16 3 3 6-7"/>',
-  coin:'<ellipse cx="16" cy="9" rx="8" ry="4"/><path d="M8 9v6c0 2 3.6 4 8 4s8-2 8-4V9M8 15v6c0 2 3.6 4 8 4s8-2 8-4v-6"/>',
-  code:'<path d="m11 10-6 6 6 6M21 10l6 6-6 6M18 6l-4 20"/>',
-  eye:'<path d="M3 16s5-8 13-8 13 8 13 8-5 8-13 8S3 16 3 16Z"/><circle cx="16" cy="16" r="4"/>',
-  hash:'<path d="M11 4 8 28M22 4l-3 24M5 12h22M4 21h22"/>'
- }[name];
- return '<svg viewBox="0 0 32 32" aria-hidden="true">'+path+'</svg>'
-};
-function draw(mode="idle",upto=99){
- $("#timeline").innerHTML=stages.map((s,i)=>{let c="step";if(mode==="ok"&&i<=upto)c+=" pass";if(mode==="deny"){if(i<2)c+=" pass";else if(i===2)c+=" denied"}return '<article class="'+c+'" data-stage="'+i+'"><div class="step-icon">'+icon(s[3])+'</div><small>['+s[0]+']</small><b>'+s[1]+'</b><p>'+s[2]+'</p></article>'}).join("");
- const proof=document.querySelector('.step[data-stage="6"]');if(proof&&currentProof)proof.onclick=openEvidence
+const usdc=atomic=>(Number(atomic||0)/1_000_000).toFixed(2)+" USDC";
+
+let liveConfig={enabled:false};
+let connectedAccount=null;
+let currentProof=null;
+let currentArtifact=null;
+let currentService=null;
+let catalog=[];
+let inProgress=false;
+const SESSION_KEY="agentpay.activity.v1";
+
+function fitStage(){
+ const stage=$("#stage");
+ const mobile=matchMedia("(max-width:900px)").matches;
+ if(mobile){
+  const scale=innerWidth/1672;
+  stage.style.transform="scale("+scale+")";
+  stage.style.transformOrigin="0 0";
+  stage.style.left="0";stage.style.top="0";
+  document.body.style.height=(940*scale)+"px";
+  return;
+ }
+ const scale=Math.min(innerWidth/1672,innerHeight/940);
+ stage.style.left="50%";stage.style.top="50%";
+ stage.style.transformOrigin="center center";
+ stage.style.transform="translate(-50%,-50%) scale("+scale+")";
+ document.body.style.height="";
 }
-draw();
-async function run(amount){
- document.body.classList.add("running");draw();
- try{
-  const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({amount_atomic:amount,document:"Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims."})});
-  const d=await r.json();if(!r.ok)throw new Error(d.error||"request failed");currentProof=d.proof;const denied=d.status==="DENIED";
-  if(denied){draw("deny")}else{for(let i=0;i<7;i++){draw("ok",i);await new Promise(resolve=>setTimeout(resolve,110))}}
-  addActivity("AgentPay Demo",denied?"Denied (policy)":"Verified",denied?"—":"0.25 USDC",denied?"bad":"ok");
- }catch(e){console.error(e)}finally{document.body.classList.remove("running")}
+addEventListener("resize",fitStage,{passive:true});
+fitStage();
+
+function chainName(chainId){
+ const id=Number(chainId);
+ if(id===8453)return "Base Mainnet";
+ if(id===84532)return "Base Sepolia";
+ return id?"Base "+id:"Base";
 }
-function openEvidence(){
- if(!currentProof)return;
- const p=currentProof,rows=[["Intent",p.intent?.intent_id],["Quote",p.quote?.quote_id],["Authority",p.authority?.decision],["Settlement",p.settlement?.transaction_hash],["Execution",p.result?.result_digest],["Observation",p.observation?.observer_id],["Proof",p.proof_hash]];
- $("#evidence-grid").innerHTML=rows.filter(x=>x[1]).map(x=>'<article><small>'+esc(x[0])+'</small><div>'+esc(short(x[1],22))+'</div></article>').join("");
- $("#evidence-json").textContent=JSON.stringify(p,null,2);$("#evidence-dialog").showModal()
+
+function showStatus(title,message,actions=[],kicker="AGENTPAY COMPANION"){
+ $("#status-kicker").textContent=kicker;
+ $("#status-title").textContent=title;
+ $("#status-message").textContent=message;
+ const box=$("#status-actions");box.innerHTML="";
+ for(const action of actions){
+  const b=document.createElement("button");b.type="button";b.textContent=action.label;
+  if(action.primary)b.classList.add("primary-action");
+  b.onclick=async()=>{ $("#status-dialog").close(); await action.onClick?.(); };
+  box.appendChild(b);
+ }
+ $("#status-dialog").showModal();
 }
+
+function drawStages(upto=-1,denied=-1){
+ const host=$("#stage-state");host.innerHTML="";
+ for(let i=0;i<=upto;i++){
+  const span=document.createElement("span");
+  if(i===denied)span.className="denied";
+  host.appendChild(span);
+ }
+}
+
+async function getJson(path){
+ const r=await fetch(path,{headers:{"accept":"application/json"}});
+ const d=await r.json();
+ if(!r.ok){const e=new Error(d.error||"request failed");e.status=r.status;e.payload=d;throw e}
+ return d;
+}
+
 async function postJson(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
- const d=await r.json();if(!r.ok){const e=new Error(d.error||"request failed");e.status=r.status;e.payload=d;throw e}return d
+ const d=await r.json();
+ if(!r.ok){const e=new Error(d.error||"request failed");e.status=r.status;e.payload=d;throw e}
+ return d;
+}
+
+function readActivity(){
+ try{return JSON.parse(sessionStorage.getItem(SESSION_KEY)||"[]")}catch{return []}
+}
+function writeActivity(items){
+ try{sessionStorage.setItem(SESSION_KEY,JSON.stringify(items.slice(0,5)))}catch{}
+}
+function renderActivity(){
+ const list=$("#activity-list");
+ const items=readActivity();
+ list.innerHTML="";
+ const rows=items.length?items:[{name:"Ready",status:"Waiting",amount:"—",kind:"info",time:"now"}];
+ for(const item of rows.slice(0,5)){
+  const row=document.createElement("p");
+  row.innerHTML='<i class="'+esc(item.kind||"info")+'"></i><b>'+esc(item.name)+'</b><em>'+esc(item.status)+'</em><span>'+esc(item.amount||"—")+'</span><small>'+esc(item.time||"now")+'</small>';
+  list.appendChild(row);
+ }
+ for(let i=rows.length;i<5;i++){
+  const row=document.createElement("p");row.className="empty";
+  row.innerHTML="<i></i><b>—</b><em>—</em><span>—</span><small>—</small>";
+  list.appendChild(row);
+ }
 }
 function addActivity(name,status,amount="—",kind="info"){
- const list=$("#activity-list"),row=document.createElement("p");
- row.innerHTML='<i class="'+kind+'"></i><b>'+esc(name)+'</b><em>'+esc(status)+'</em><span>'+esc(amount)+'</span><small>now</small>';
- list.prepend(row);while(list.children.length>5)list.lastElementChild.remove()
+ const items=readActivity();
+ items.unshift({name,status,amount,kind,time:"now"});
+ writeActivity(items);
+ renderActivity();
 }
-async function reconcileLive(decisionId,txHash,sender){
+
+async function connectWallet(){
+ if(!window.ethereum){
+  showStatus("Wallet not detected","This browser is not exposing an EVM wallet. Enable MetaMask, Coinbase Wallet, or another Base-compatible injected wallet, then refresh.",[]);
+  return null;
+ }
+ try{
+  const accounts=await ethereum.request({method:"eth_requestAccounts"});
+  connectedAccount=accounts?.[0]||null;
+  $("#wallet-state").textContent=connectedAccount?short(connectedAccount,12):"Not connected";
+  $("#runtime-state").textContent=connectedAccount?"Wallet ready":"Online";
+  return connectedAccount;
+ }catch(e){
+  showStatus("Wallet connection stopped",e?.code===4001?"You rejected the wallet connection request.":(e?.message||"Wallet connection failed."));
+  return null;
+ }
+}
+
+async function ensureBase(chainIdHex){
+ const id=parseInt(chainIdHex,16);
+ const add={
+  8453:{chainName:"Base",rpcUrls:["https://mainnet.base.org"],blockExplorerUrls:["https://basescan.org"]},
+  84532:{chainName:"Base Sepolia",rpcUrls:["https://sepolia.base.org"],blockExplorerUrls:["https://sepolia.basescan.org"]}
+ }[id];
+ try{
+  await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:chainIdHex}]});
+ }catch(e){
+  if(e?.code!==4902||!add)throw e;
+  await ethereum.request({method:"wallet_addEthereumChain",params:[{chainId:chainIdHex,nativeCurrency:{name:"Ether",symbol:"ETH",decimals:18},...add}]});
+ }
+}
+
+function serviceBySlug(slug){
+ return catalog.find(s=>s.slug===slug)||null;
+}
+function openService(slug="code"){
+ const service=serviceBySlug(slug);
+ if(!service){
+  showStatus("Service unavailable","The service catalog has not loaded yet.");
+  return;
+ }
+ currentService=service;
+ $("#service-kicker").textContent="GOVERNED SERVICE · "+service.service_id;
+ $("#service-title").textContent=service.title;
+ $("#service-description").textContent=service.description;
+ $("#service-price").textContent=usdc(service.price_atomic);
+ $("#service-input-label").textContent=service.input_label||"Request";
+ $("#service-input").placeholder=service.input_placeholder||"Enter the bounded service request…";
+ $("#service-input").value="";
+ $("#service-note").textContent="AgentPay binds this exact request to "+service.title+", "+usdc(service.price_atomic)+", the configured recipient, USDC and Base before the wallet sees a transaction.";
+ $("#service-dialog").showModal();
+ setTimeout(()=>$("#service-input").focus(),0);
+}
+
+async function reconcile(decisionId,txHash,sender){
  for(let attempt=0;attempt<30;attempt++){
   try{return await postJson("/api/live/reconcile",{decision_id:decisionId,transaction_hash:txHash,sender})}
   catch(e){
    if(e.status===409&&e.payload?.error==="settlement-not-observed"){
-    $("#runtime-state").textContent="Reconciling";await new Promise(r=>setTimeout(r,2000));continue
+    $("#runtime-state").textContent="Reconciling";
+    await new Promise(r=>setTimeout(r,2000));
+    continue;
    }
-   throw e
+   throw e;
   }
  }
- throw new Error("settlement-reconciliation-timeout")
+ throw new Error("settlement-reconciliation-timeout");
 }
-async function runLive(){
- if(!liveConfig.enabled)throw new Error("live-mode-not-configured");
- if(!window.ethereum)throw new Error("browser-wallet-required");
- document.body.classList.add("running");draw();
- const document="Autonomous agents can purchase digital services. AgentPay Proof constrains payment authority and independently verifies the outcome. Evidence should not depend on the purchasing agent's own claims.";
- let prepared=null;
+
+async function runService(service,document){
+ if(inProgress)return;
+ if(!liveConfig.enabled){
+  showStatus("Live mode unavailable","The site is not configured for live Base settlement. No wallet request was created.");
+  return;
+ }
+ if(!document.trim()){
+  showStatus("Request required","Enter the bounded input that this service should execute.");
+  return;
+ }
+ const sender=connectedAccount||await connectWallet();
+ if(!sender)return;
+
+ inProgress=true;
+ $("#runtime-state").textContent="Preparing";
+ let prepared;
  try{
-  prepared=await postJson("/api/live/prepare",{amount_atomic:250000,document});
+  drawStages(1);
+  addActivity(service.title,"Quote prepared",usdc(service.price_atomic),"info");
+  prepared=await postJson("/api/live/prepare",{
+   service_id:service.service_id,
+   amount_atomic:service.price_atomic,
+   document
+  });
   if(prepared.status==="DENIED"){
-   currentProof=prepared.proof;draw("deny");addActivity("AgentPay Live","Denied (policy)","—","bad");return
+   currentProof=prepared.proof;currentArtifact=null;
+   drawStages(2,2);
+   addActivity(service.title,"Denied","—","bad");
+   showStatus("Payment denied","Frequency denied this request before settlement. The proof records the failed authority constraint.",[
+    {label:"Open Denial Proof",primary:true,onClick:openProof}
+   ],"BOUNDED AUTHORITY");
+   return;
   }
-  const accounts=await ethereum.request({method:"eth_requestAccounts"});
-  if(!accounts?.[0])throw new Error("wallet-account-required");
-  const sender=accounts[0];
-  await ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:prepared.wallet_request.chainId}]});
+
+  drawStages(2);
+  await ensureBase(prepared.wallet_request.chainId);
   $("#runtime-state").textContent="Wallet approval";
+  addActivity(service.title,"Awaiting wallet",usdc(service.price_atomic),"info");
+
   let txHash;
   try{
    txHash=await ethereum.request({method:"eth_sendTransaction",params:[{
-    from:sender,to:prepared.wallet_request.to,value:prepared.wallet_request.value,data:prepared.wallet_request.data
+    from:sender,
+    to:prepared.wallet_request.to,
+    value:prepared.wallet_request.value,
+    data:prepared.wallet_request.data
    }]});
   }catch(e){
    if(e?.code===4001){
-    await postJson("/api/live/abort",{decision_id:prepared.decision_id});
-    addActivity("AgentPay Live","Wallet rejected","—","bad");
+    await postJson("/api/live/abort",{decision_id:prepared.decision_id}).catch(()=>{});
+    addActivity(service.title,"Wallet rejected","—","bad");
    }else{
     await postJson("/api/live/uncertain",{decision_id:prepared.decision_id}).catch(()=>{});
-    addActivity("AgentPay Live","In doubt","—","info");
+    addActivity(service.title,"In doubt","—","info");
    }
-   throw e
+   throw e;
   }
-  $("#runtime-state").textContent="Observing chain";
-  const result=await reconcileLive(prepared.decision_id,txHash,sender);
+
+  drawStages(3);
+  addActivity(service.title,"Broadcast",usdc(service.price_atomic),"info");
+  const result=await reconcile(prepared.decision_id,txHash,sender);
   currentProof=result.proof;
-  for(let i=0;i<7;i++){draw("ok",i);await new Promise(resolve=>setTimeout(resolve,110))}
-  addActivity("AgentPay Live","Verified","0.25 USDC","ok");
+  currentArtifact=result.artifact;
+  for(let i=4;i<7;i++){drawStages(i);await new Promise(r=>setTimeout(r,120))}
+  addActivity(service.title,"Verified",usdc(service.price_atomic),"info");
   $("#runtime-state").textContent="Verified";
+  showStatus("Verified service purchase",service.title+" completed. Settlement, execution and independent observation are bound into a portable proof.",[
+   {label:"Open Proof",primary:true,onClick:openProof},
+   {label:"Run Another",onClick:()=>openService(service.slug)}
+  ],"VERIFIED");
  }catch(e){
   console.error(e);
-  if($("#runtime-state").textContent!=="Verified")$("#runtime-state").textContent="Attention";
- }finally{document.body.classList.remove("running")}
+  $("#runtime-state").textContent="Attention";
+  const message=e?.code===4001?"You rejected the wallet request. No payment was sent.":(e?.message||"Live payment failed.");
+  showStatus("Live payment stopped",message,[
+   {label:"Try Again",onClick:()=>openService(service.slug)}
+  ]);
+ }finally{
+  inProgress=false;
+ }
 }
-async function initRuntime(){
- try{
-  const r=await fetch("/api/live/config"),d=await r.json();liveConfig=d;
-  $("#live-enabled").textContent=d.enabled?"Enabled":"Not configured";
-  $("#runtime-network").textContent=d.enabled?"Base chain "+d.chain_id:"Demo";
-  $("#network-label").textContent=d.enabled?"Base "+d.chain_id:"Demo / Base";
-  $("#run-live").hidden=!d.enabled;
- }catch(e){console.error(e)}
-}
-$("#run-ok").onclick=()=>run(250000);
-$("#run-live").onclick=()=>runLive();
-initRuntime();
-$("#explore").onclick=()=>document.querySelector(".services").animate([{boxShadow:"0 0 0 rgba(21,151,255,0)"},{boxShadow:"0 0 42px rgba(21,151,255,.42)"},{boxShadow:"0 0 0 rgba(21,151,255,0)"}],{duration:900});
 
-(()=>{
- const c=$("#scene"),g=c.getContext("2d",{alpha:false,desynchronized:true});
- let w=0,h=0,dpr=1,start=performance.now(),bits=[],stars=[],ridges=[];
- const rand=i=>{const n=Math.sin(i*131.73+17.91)*43758.5453123;return n-Math.floor(n)};
- function resize(){
-  dpr=Math.min(devicePixelRatio||1,3);w=innerWidth;h=innerHeight;
-  c.width=Math.max(1,Math.round(w*dpr));c.height=Math.max(1,Math.round(h*dpr));c.style.width=w+"px";c.style.height=h+"px";g.setTransform(dpr,0,0,dpr,0,0);
-  bits=Array.from({length:900},(_,i)=>({base:rand(i)*(w+460)-230,lane:(rand(i+700)-.5)*250,speed:30+rand(i+1200)*150,size:.35+rand(i+1800)*1.75,phase:rand(i+2400)*6.283,tone:rand(i+3100)}));
-  stars=Array.from({length:1500},(_,i)=>({x:rand(i+4100)*w,y:rand(i+5200)*h*.72,a:.025+rand(i+6100)*.48,size:.25+rand(i+7000)*1.4}));
-  ridges=[0,1,2,3].map(layer=>Array.from({length:96},(_,i)=>{
-   const x=w*(.26+i/95*.78),noise=rand(i+layer*257),n2=rand(i*7+layer*997);
-   const arch=Math.pow(Math.sin(Math.PI*i/95),.55);
-   const y=h*(.43-layer*.018)-arch*h*(.11+layer*.016)-(noise*.62+n2*.38)*h*(.06+layer*.012);
-   return [x,y]
-  }))
+function downloadBlob(filename,type,content){
+ const blob=new Blob([content],{type});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),0);
+}
+
+function openProof(){
+ if(!currentProof){
+  showStatus("No proof yet","Run a service first. A verified or denied proof will appear here.");
+  return;
  }
- function riverY(x,t,lane=0){return h*.445+Math.sin(x*.006+t*.00034)*42+Math.sin(x*.014-t*.00017)*15+lane}
- function drawSky(now){
-  const bg=g.createLinearGradient(0,0,0,h);bg.addColorStop(0,"#071a2a");bg.addColorStop(.46,"#04111d");bg.addColorStop(1,"#020812");g.fillStyle=bg;g.fillRect(0,0,w,h);
-  const halo=g.createRadialGradient(w*.72,h*.25,20,w*.72,h*.25,w*.45);halo.addColorStop(0,"rgba(43,143,226,.22)");halo.addColorStop(.48,"rgba(14,72,128,.09)");halo.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=halo;g.fillRect(0,0,w,h);
-  for(const p of stars){g.fillStyle='rgba(52,164,250,'+p.a+')';g.fillRect(p.x,p.y,p.size,p.size)}
+ const p=currentProof;
+ const rows=[
+  ["Intent",p.intent?.intent_id],
+  ["Quote",p.quote?.quote_id],
+  ["Authority",p.authority?.decision],
+  ["Settlement",p.settlement?.transaction_hash],
+  ["Execution",p.result?.result_digest],
+  ["Observation",p.observation?.observer_id],
+  ["Proof",p.proof_hash]
+ ];
+ $("#evidence-grid").innerHTML=rows.filter(x=>x[1]).map(x=>'<article><small>'+esc(x[0])+'</small><div>'+esc(short(x[1],28))+'</div></article>').join("");
+ $("#evidence-json").textContent=JSON.stringify(p,null,2);
+ $("#artifact-download").hidden=!currentArtifact;
+ $("#evidence-dialog").showModal();
+}
+
+
+function showContent(kicker,title,html){
+ $("#content-kicker").textContent=kicker;
+ $("#content-title").textContent=title;
+ $("#content-body").innerHTML=html;
+ $("#content-dialog").showModal();
+}
+
+function openExplorer(){
+ if(!catalog.length){
+  showStatus("Catalog unavailable","The service catalog has not loaded.");
+  return;
  }
- function drawMist(){
-  const blobs=[[.48,.27,.18,.11],[.60,.24,.15,.10],[.74,.22,.17,.12],[.86,.26,.14,.09]];
-  for(const [bx,by,rx,a] of blobs){
-    const gr=g.createRadialGradient(w*bx,h*by,0,w*bx,h*by,w*rx);
-    gr.addColorStop(0,'rgba(165,208,235,'+a+')');gr.addColorStop(.45,'rgba(55,106,145,'+(a*.42)+')');gr.addColorStop(1,'rgba(0,0,0,0)');
-    g.fillStyle=gr;g.fillRect(w*(bx-rx),h*(by-rx),w*rx*2,h*rx*2);
-  }
+ const cards=catalog.map(service=>`
+   <button class="catalog-row" type="button" data-open-service="${esc(service.slug)}">
+     <span><b>${esc(service.title)}</b><small>${esc(service.description)}</small></span>
+     <em>${esc(usdc(service.price_atomic))}</em>
+   </button>`).join("");
+ showContent("MACHINE-READABLE SERVICE CATALOG","Explore Services",`
+   <p>Every listed service has a fixed server-owned price, a bounded request contract, and a verifiable evidence path.</p>
+   <div class="catalog-list">${cards}</div>
+   <p class="content-foot">Discovery schema: <code>agentpay-catalog/1</code> · settlement asset: USDC · governed chain: ${esc(chainName(liveConfig.chain_id))}</p>`);
+ $("#content-body [data-open-service]").forEach(btn=>btn.onclick=()=>{
+  $("#content-dialog").close();
+  openService(btn.dataset.openService);
+ });
+}
+
+function openDevelopers(){
+ const rows=catalog.map(service=>`
+   <tr><td><code>${esc(service.service_id)}</code></td><td>${esc(service.slug)}</td><td>${esc(usdc(service.price_atomic))}</td></tr>`).join("");
+ showContent("OPEN INTEGRATION SURFACE","Developers",`
+   <p>AgentPay exposes a small machine-readable interface. Frequency remains outside the public product boundary; the public contract is quotes, bounded authority, settlement evidence, service result and proof.</p>
+   <div class="endpoint-grid">
+     <article><small>GET</small><b>/api/catalog</b><span>Discover available services and exact prices.</span></article>
+     <article><small>GET</small><b>/api/discovery?service_id=code</b><span>Inspect one service contract.</span></article>
+     <article><small>POST</small><b>/api/live/prepare</b><span>Reserve exact one-shot authority before wallet handoff.</span></article>
+     <article><small>POST</small><b>/api/live/reconcile</b><span>Independently reconstruct Base settlement and complete proof.</span></article>
+   </div>
+   <table class="developer-table"><thead><tr><th>Service</th><th>Slug</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>
+   <div class="dialog-actions"><a class="link-button" href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">Open GitHub ↗</a></div>`);
+}
+
+function openDocs(){
+ showContent("PRODUCT + ASSURANCE","Documentation",`
+   <p><b>AgentPay Proof</b> governs autonomous service payments without giving software unrestricted economic authority.</p>
+   <ol class="docs-flow">
+     <li><b>Intent</b><span>The exact service request is hashed and bound to the agent intent.</span></li>
+     <li><b>Quote</b><span>Service, recipient, Base chain, USDC asset, amount and expiry become immutable evidence.</span></li>
+     <li><b>Authority</b><span>Frequency-compatible policy decides PERMIT or DENY before settlement.</span></li>
+     <li><b>Settlement</b><span>The external wallet approves the exact ERC-20 transfer; AgentPay never receives the private key.</span></li>
+     <li><b>Execution</b><span>The selected bounded service executes only after settlement is independently observed.</span></li>
+     <li><b>Observation</b><span>A distinct observer binds the settlement to the service artifact.</span></li>
+     <li><b>Proof</b><span>Portable evidence can be downloaded and independently verified; mutation fails verification.</span></li>
+   </ol>
+   <p class="content-foot">Ambiguous dispatch becomes <code>IN_DOUBT</code>. AgentPay does not silently retry a payment.</p>
+   <div class="dialog-actions"><a class="link-button" href="https://github.com/altrudev/AgentPay-Proof/tree/main/docs" target="_blank" rel="noopener">Repository Docs ↗</a></div>`);
+}
+
+function openCompanion(){
+ const actions=[];
+ let message="";
+ if(inProgress){
+  message="A governed payment is in progress. Companion is preserving the current state and will not start a second payment.";
+ }else if(!liveConfig.enabled){
+  message="Live settlement is not configured. Companion is keeping the interface read-only for payment execution.";
+ }else if(!window.ethereum){
+  message="Base is reachable, but this browser has no injected wallet. Enable a compatible wallet to run a real service.";
+ }else if(!connectedAccount){
+  message="Base is ready. Connect your wallet, then choose a bounded service request.";
+  actions.push({label:"Connect Wallet",primary:true,onClick:connectWallet});
+ }else if(currentProof){
+  message="Wallet and Base are ready. The latest proof is available, or you can run another bounded service.";
+  actions.push({label:"Open Proof",primary:true,onClick:openProof});
+  actions.push({label:"Run Service",onClick:()=>openService("code")});
+ }else{
+  message="Wallet and Base are ready. Choose a service; AgentPay will bind the exact request and price before requesting wallet approval.";
+  actions.push({label:"Run Code Analysis",primary:true,onClick:()=>openService("code")});
+  actions.push({label:"Explore Services",onClick:focusServices});
  }
- function drawMountains(){
-  for(let layer=0;layer<ridges.length;layer++){
-   const r=ridges[layer],base=h*.565+layer*10;
-   g.beginPath();g.moveTo(r[0][0],base);for(const [x,y] of r)g.lineTo(x,y);g.lineTo(r[r.length-1][0],base);g.closePath();
-   const grad=g.createLinearGradient(0,h*.16,0,h*.59);
-   grad.addColorStop(0,'rgba('+(layer>1?'23,74,115':'14,52,82')+','+(.42+layer*.06)+')');
-   grad.addColorStop(.68,'rgba(5,28,48,'+(.64+layer*.04)+')');
-   grad.addColorStop(1,'rgba(2,10,18,.10)');
-   g.fillStyle=grad;g.fill();
-   g.strokeStyle='rgba('+(layer===3?'220,244,255':'86,171,230')+','+(.22+layer*.12)+')';g.lineWidth=layer===3?1.6:.8;g.stroke();
-   g.save();g.globalCompositeOperation="lighter";
-   for(let i=2;i<r.length-2;i++){
-     const [x,y]=r[i],py=r[i-1][1],ny=r[i+1][1];
-     if(i%2===0 && y<py && y<ny){
-       g.strokeStyle='rgba(242,251,255,'+(layer===3?.72:.28)+')';g.lineWidth=layer===3?1.1:.65;
-       g.beginPath();g.moveTo(x,y);g.lineTo(x-16,y+23);g.moveTo(x,y);g.lineTo(x+19,y+27);g.stroke();
-     }
-     if(i%3===0){const z=rand(i+layer*37)>.62?1.7:1.05;g.fillStyle=z>1.5?'rgba(229,248,255,.78)':'rgba(30,155,248,.58)';g.fillRect(x-1,y+12+rand(i+layer*53)*42,z,z)}
-   }
-   g.restore()
-  }
+ showStatus("Companion",message,actions);
+}
+
+function focusServices(){
+ const el=$(".service");
+ el?.focus();
+ $$(".service").forEach(card=>card.animate(
+  [{boxShadow:"0 0 0 rgba(38,201,255,0)"},{boxShadow:"0 0 24px rgba(38,201,255,.35)"},{boxShadow:"0 0 0 rgba(38,201,255,0)"}],
+  {duration:900}
+ ));
+}
+
+async function refreshNetwork(){
+ try{
+  const d=await getJson("/api/live/network");
+  $("#network-block").textContent=String(d.block);
+  $("#network-gas").textContent=String(d.gas_gwei)+" gwei";
+  $("#network-rpc").textContent=String(d.rpc_ms)+" ms";
+  const label=chainName(d.chain_id);
+  $("#network-label").textContent=label;
+  $("#runtime-network").textContent=label;
+  if(!connectedAccount&&!inProgress)$("#runtime-state").textContent="Online";
+ }catch{
+  if(!inProgress)$("#runtime-state").textContent="RPC offline";
  }
- function drawMesh(now){
-  for(let row=0;row<11;row++){g.beginPath();for(let x=w*.18;x<w+20;x+=13){const y=h*(.33+row*.026)+Math.sin(x*.0061+row*1.7+now*.00006)*17+Math.sin(x*.018-row*.75)*6;x===w*.18?g.moveTo(x,y):g.lineTo(x,y)}g.strokeStyle='rgba(48,130,196,'+(.035+row*.009)+')';g.lineWidth=.55;g.stroke()}
-  for(let x=w*.2;x<w;x+=28){g.strokeStyle="rgba(55,137,202,.05)";g.beginPath();g.moveTo(x,h*.3);g.lineTo(x+130,h*.59);g.stroke()}
+}
+
+async function loadCatalog(){
+ const d=await getJson("/api/catalog");
+ catalog=Array.isArray(d.services)?d.services:[];
+ for(const service of catalog){
+  const price=$('[data-price="'+service.slug+'"]');
+  if(price)price.textContent=usdc(service.price_atomic);
  }
- function drawWeave(now){
-  const x0=w*.70,top=h*.04,join=h*.40;
-  g.save();g.globalCompositeOperation="lighter";
-  for(let k=-11;k<=11;k++){const x=x0+k*4.7;g.beginPath();g.moveTo(x,top);g.bezierCurveTo(x+Math.sin(now*.00024+k)*26,h*.18,x-34,h*.30,w*.70,join);g.bezierCurveTo(w*.68,h*.42,w*.74,h*.44,w*.81,h*.462);g.strokeStyle=k%4===0?"rgba(244,251,255,.27)":"rgba(23,151,255,.17)";g.lineWidth=k%4===0?1.25:.68;g.stroke()}
-  for(let y=h*.07;y<h*.39;y+=18){g.strokeStyle="rgba(91,218,255,.18)";g.beginPath();g.moveTo(x0-45,y);g.lineTo(x0+45,y+28);g.moveTo(x0+45,y);g.lineTo(x0-45,y+28);g.stroke()}
-  g.restore()
+}
+
+async function init(){
+ renderActivity();
+ try{await loadCatalog()}catch(e){console.error(e);showStatus("Catalog unavailable","The service catalog could not be loaded. Payment controls remain unavailable.");}
+ try{
+  const d=await getJson("/api/live/config");liveConfig=d;
+  const label=d.enabled?chainName(d.chain_id):"Demo";
+  $("#network-label").textContent=label;$("#runtime-network").textContent=label;
+  if(d.enabled)refreshNetwork();
+ }catch{
+  $("#runtime-state").textContent="Unavailable";
  }
- function drawRiver(now,elapsed){
-  g.save();g.globalCompositeOperation="lighter";
-  for(let k=-12;k<=12;k++){
-    g.beginPath();for(let x=w*.11;x<w+80;x+=7){const y=riverY(x,now,k*6.0);x===w*.11?g.moveTo(x,y):g.lineTo(x,y)}
-    const edge=Math.abs(k)/12,a=.035+(1-edge)*.17;
-    if(Math.abs(k)<=3){g.strokeStyle='rgba(32,145,255,'+(0.035+(3-Math.abs(k))*.018)+')';g.lineWidth=9-Math.abs(k)*1.7;g.stroke();g.beginPath();for(let x=w*.11;x<w+80;x+=7){const y=riverY(x,now,k*6.0);x===w*.11?g.moveTo(x,y):g.lineTo(x,y)}}
-    g.strokeStyle=k===0?"rgba(250,253,255,.98)":'rgba('+(k%4===0?"101,222,255":"25,149,255")+','+a+')';g.lineWidth=k===0?2.8:(k%4===0?1.18:.56);g.stroke()
-  }
-  for(const p of bits){
-    const span=w+460,x=((p.base+elapsed*p.speed+230)%span)-230,y=riverY(x,now,p.lane*.42+Math.sin(elapsed*.8+p.phase)*9);
-    const bright=p.tone>.76;g.fillStyle=bright?"rgba(236,250,255,.94)":"rgba(29,157,255,.70)";
-    const z=bright?p.size*2.05:p.size*1.65;g.fillRect(x,y,z,z);
-    if(p.tone>.94){g.strokeStyle='rgba(104,224,255,.55)';g.strokeRect(x-2,y-2,z+4,z+4)}
-  }g.restore()
+ if(window.ethereum){
+  const accounts=await ethereum.request({method:"eth_accounts"}).catch(()=>[]);
+  connectedAccount=accounts?.[0]||null;
+  $("#wallet-state").textContent=connectedAccount?short(connectedAccount,12):"Not connected";
+  ethereum.on?.("accountsChanged",accounts=>{
+   connectedAccount=accounts?.[0]||null;
+   $("#wallet-state").textContent=connectedAccount?short(connectedAccount,12):"Not connected";
+  });
+  ethereum.on?.("chainChanged",()=>refreshNetwork());
  }
- function frame(now){const elapsed=(now-start)/1000;drawSky(now);drawMist();drawMountains();drawMesh(now);drawWeave(now);drawRiver(now,elapsed);requestAnimationFrame(frame)}
- addEventListener("resize",resize,{passive:true});resize();if(!matchMedia("(prefers-reduced-motion: reduce)").matches)requestAnimationFrame(frame)
-})();
+}
+
+$("#run-service").onclick=()=>openService("code");
+$("#nav-explore").onclick=openExplorer;
+$("#nav-run").onclick=()=>openService("code");
+$("#nav-proofs").onclick=()=>openProof();
+$("#nav-developers").onclick=openDevelopers;
+$("#nav-docs").onclick=openDocs;
+$("#network-control").onclick=()=>connectWallet();
+$("#explore").onclick=openExplorer;
+$("#search-control").onclick=openExplorer;
+$("#theme-control").onclick=()=>document.body.classList.toggle("dim");
+$("#menu-control").onclick=openCompanion;
+$("#service-cancel").onclick=()=>$("#service-dialog").close();
+$("#service-submit").onclick=async()=>{
+ const service=currentService;
+ const document=$("#service-input").value;
+ $("#service-dialog").close();
+ if(service)await runService(service,document);
+};
+$("#proof-download").onclick=()=>{
+ if(currentProof)downloadBlob("agentpay-proof.json","application/json",JSON.stringify(currentProof,null,2));
+};
+$("#artifact-download").onclick=()=>{
+ if(!currentArtifact)return;
+ if(currentArtifact.format==="obj"&&currentArtifact.obj){
+  downloadBlob(currentArtifact.filename||"agentpay-artifact.obj","text/plain",currentArtifact.obj);
+ }else{
+  downloadBlob("agentpay-artifact.json","application/json",JSON.stringify(currentArtifact,null,2));
+ }
+};
+$$(".svc").forEach(b=>b.onclick=()=>openService(b.dataset.service));
+
+init();
+setInterval(refreshNetwork,30000);

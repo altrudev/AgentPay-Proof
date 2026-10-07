@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from src.live import LiveConfig, LiveCoordinator, LivePaymentError
+from src.commercial_demo import release_validation_demo, release_validation_objects
+from src.commercial_execution import (
+    CommercialCoordinator,
+    CommercialExecutionError,
+    CommercialExecutionJournal,
+)
+from src.commercial_live import CommercialLiveError, PaidCommercialCoordinator
+from src.execution import ExecutionJournal
+from src.provider_admission import reference_provider_registry
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
-from src.service import ServiceRequest
+from src.protocol import catalog_document, discovery_document
+from src.service import ServiceRequest, resolve_service_id
 from src.verifier import verify
+from src.settlement import JsonRpcClient, SettlementError
 from src.workflow import AgentPayWorkflow
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -44,6 +56,38 @@ def live_coordinator() -> LiveCoordinator:
     return LiveCoordinator(config)
 
 
+def commercial_journal() -> CommercialExecutionJournal:
+    path = os.environ.get(
+        "AGENTPAY_COMMERCIAL_STATE_DB",
+        "agentpay-state/commercial.sqlite3",
+    )
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    return CommercialExecutionJournal(path)
+
+
+def commercial_coordinator() -> CommercialCoordinator:
+    return CommercialCoordinator(commercial_journal())
+
+
+def paid_commercial_coordinator() -> PaidCommercialCoordinator:
+    if os.environ.get("AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY", "").strip() != "1":
+        raise CommercialLiveError("paid-capability-route-not-enabled")
+    config = live_config()
+    if config is None:
+        raise CommercialLiveError("live-mode-not-configured")
+    Path(config.journal_path).parent.mkdir(parents=True, exist_ok=True)
+    registry = reference_provider_registry(
+        payment_recipient=config.recipient,
+        now=int(time.time()),
+    )
+    return PaidCommercialCoordinator(
+        commercial_journal=commercial_journal(),
+        payment_journal=ExecutionJournal(config.journal_path),
+        live_config=config,
+        provider_registry=registry,
+    )
+
+
 class DemoSettlementProvider:
     """Explicit non-chain fixture. Never presented as on-chain settlement."""
 
@@ -63,9 +107,9 @@ def workflow() -> AgentPayWorkflow:
     )
 
 
-def run_demo(amount_atomic: int, document: str) -> dict:
+def run_demo(amount_atomic: int, document: str, service_id: str = "code-analysis-v1") -> dict:
     outcome = workflow().purchase(
-        ServiceRequest(document), agent_id="agent:judge-demo",
+        ServiceRequest(document, resolve_service_id(service_id)), agent_id="agent:judge-demo",
         now=1_800_000_000, quote_amount_atomic=amount_atomic,
     )
     return {"environment": "DEMO", **outcome}
@@ -95,7 +139,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/health":
             config = live_config()
             return self._json(200, {
@@ -104,6 +149,22 @@ class Handler(BaseHTTPRequestHandler):
                 "live_enabled": config is not None,
                 "live_chain_id": config.chain_id if config else None,
             })
+        if path == "/api/catalog":
+            return self._json(200, catalog_document())
+        if path == "/api/commercial/demo":
+            return self._json(200, release_validation_demo(now=int(time.time())))
+        if path == "/api/commercial/prepare-demo":
+            now = int(time.time())
+            capsule, offers = release_validation_objects(now=now)
+            return self._json(200, commercial_coordinator().prepare(capsule, offers, now=now))
+        if path == "/api/discovery":
+            query = parse_qs(parsed.query)
+            service_id = str(query.get("service_id", ["code-analysis-v1"])[0])
+            try:
+                service_id = resolve_service_id(service_id)
+                return self._json(200, discovery_document(service_id))
+            except ValueError:
+                return self._json(404, {"error": "service-not-found"})
         if path == "/api/live/config":
             config = live_config()
             return self._json(200, {
@@ -111,18 +172,49 @@ class Handler(BaseHTTPRequestHandler):
                 "chain_id": config.chain_id if config else None,
                 "maximum_amount_atomic": config.maximum_amount_atomic if config else None,
             })
+        if path == "/api/live/network":
+            config = live_config()
+            if config is None:
+                return self._json(503, {"error": "live-mode-not-configured"})
+            started = time.perf_counter()
+            try:
+                rpc = JsonRpcClient(config.rpc_url, timeout_seconds=5)
+                chain_hex = rpc.call("eth_chainId", [])
+                block_hex = rpc.call("eth_blockNumber", [])
+                gas_hex = rpc.call("eth_gasPrice", [])
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                chain_id = int(chain_hex, 16)
+                if chain_id != config.chain_id:
+                    return self._json(502, {"error": "rpc-network-mismatch"})
+                return self._json(200, {
+                    "online": True,
+                    "chain_id": chain_id,
+                    "block": int(block_hex, 16),
+                    "gas_gwei": round(int(gas_hex, 16) / 1_000_000_000, 4),
+                    "rpc_ms": latency_ms,
+                })
+            except Exception:
+                return self._json(502, {"online": False, "error": "rpc-unavailable"})
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
+        is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
+        is_v5_asset = name.startswith("assets/approved-v5/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg", ".webp")) and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved and not is_v5_asset and not is_v6_asset:
             return self._json(404, {"error": "not-found"})
-        target = WEB / name
+        target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            return self._json(404, {"error": "not-found"})
         if not target.exists():
             return self._json(404, {"error": "not-found"})
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
-        self.send_header("cache-control", "no-store")
+        cache = "public, max-age=86400, immutable" if is_graphic or is_v5_asset or is_v6_asset or name.endswith((".png", ".webp")) else "no-store"
+        self.send_header("cache-control", cache)
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("content-security-policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -140,17 +232,26 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         name = "index.html" if path == "/" else path.lstrip("/")
-        if name not in {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}:
+        allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
+        is_graphic = name.startswith("graphics/") and name.endswith(".svg") and ".." not in Path(name).parts
+        is_approved = name.startswith("approved/") and name.endswith(".png") and ".." not in Path(name).parts
+        is_v5_asset = name.startswith("assets/approved-v5/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg", ".webp")) and ".." not in Path(name).parts
+        if name not in allowed and not is_graphic and not is_approved and not is_v5_asset and not is_v6_asset:
             self.send_response(404)
             self.end_headers()
             return
-        target = WEB / name
+        target = (WEB / name).resolve()
+        if WEB.resolve() not in target.parents and target != WEB.resolve():
+            self.send_response(404)
+            self.end_headers()
+            return
         if not target.exists():
             self.send_response(404)
             self.end_headers()
             return
         body = target.read_bytes()
-        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png"}[name.rsplit(".",1)[-1]]
+        mime = {"html": "text/html; charset=utf-8", "js": "application/javascript; charset=utf-8", "css": "text/css; charset=utf-8", "webp": "image/webp", "png": "image/png", "svg": "image/svg+xml"}[name.rsplit(".",1)[-1]]
         self.send_response(200)
         self.send_header("content-type", mime)
         self.send_header("content-length", str(len(body)))
@@ -168,21 +269,110 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/run":
                 amount = int(payload.get("amount_atomic", 250_000))
                 document = str(payload.get("document", ""))[:5000]
+                service_id = str(payload.get("service_id", "code-analysis-v1"))
                 if not document.strip() or amount <= 0 or amount > 10_000_000:
                     return self._json(400, {"error": "invalid-request"})
-                return self._json(200, run_demo(amount, document))
+                return self._json(200, run_demo(amount, document, service_id))
             if path == "/api/tamper":
                 proof = payload.get("proof")
                 if not isinstance(proof, dict):
                     return self._json(400, {"error": "proof-required"})
                 return self._json(200, tamper_demo(proof))
+            if path == "/api/commercial/live/prepare":
+                grant_id = str(payload.get("grant_id", ""))
+                approval_digest = str(payload.get("approval_digest", ""))
+                rendered_page_digest = str(payload.get("rendered_page_digest", ""))
+                reference_digest = str(payload.get("reference_digest", ""))
+                if not all((grant_id, approval_digest, rendered_page_digest, reference_digest)):
+                    return self._json(400, {"error": "commercial-wallet-fields-required"})
+                return self._json(200, paid_commercial_coordinator().prepare_wallet(
+                    grant_id,
+                    commercial_approval_digest=approval_digest,
+                    payload={
+                        "rendered_page_digest": rendered_page_digest,
+                        "reference_digest": reference_digest,
+                    },
+                    now=int(time.time()),
+                ))
+            if path == "/api/commercial/live/confirm":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                execution_approval_digest = str(payload.get("execution_approval_digest", ""))
+                if not all((grant_id, decision_id, execution_approval_digest)):
+                    return self._json(400, {"error": "commercial-wallet-confirm-fields-required"})
+                return self._json(200, paid_commercial_coordinator().confirm_wallet(
+                    grant_id,
+                    decision_id,
+                    execution_approval_digest=execution_approval_digest,
+                    now=int(time.time()),
+                ))
+            if path == "/api/commercial/live/abort":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                if not (grant_id and decision_id):
+                    return self._json(400, {"error": "commercial-wallet-abort-fields-required"})
+                return self._json(200, paid_commercial_coordinator().abort_wallet(
+                    grant_id, decision_id
+                ))
+            if path == "/api/commercial/live/uncertain":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                if not (grant_id and decision_id):
+                    return self._json(400, {"error": "commercial-wallet-uncertain-fields-required"})
+                return self._json(200, paid_commercial_coordinator().mark_wallet_uncertain(
+                    grant_id, decision_id
+                ))
+            if path == "/api/commercial/live/reconcile":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                tx_hash = str(payload.get("transaction_hash", ""))
+                sender = str(payload.get("sender", ""))
+                if not all((grant_id, decision_id, tx_hash, sender)):
+                    return self._json(400, {"error": "commercial-wallet-reconcile-fields-required"})
+                try:
+                    return self._json(200, paid_commercial_coordinator().reconcile(
+                        grant_id,
+                        decision_id,
+                        tx_hash,
+                        sender,
+                        now=int(time.time()),
+                    ))
+                except CommercialLiveError as exc:
+                    if str(exc) == "commercial-settlement-not-observed":
+                        return self._json(409, {
+                            "error": "commercial-settlement-not-observed",
+                            "state": "IN_DOUBT",
+                            "retry": "reconcile-only",
+                        })
+                    raise
+            if path == "/api/commercial/execute-demo":
+                grant_id = str(payload.get("grant_id", ""))
+                approval_digest = str(payload.get("approval_digest", ""))
+                rendered_page_digest = str(payload.get("rendered_page_digest", ""))
+                reference_digest = str(payload.get("reference_digest", ""))
+                if not all((grant_id, approval_digest, rendered_page_digest, reference_digest)):
+                    return self._json(400, {"error": "commercial-execution-fields-required"})
+                return self._json(200, commercial_coordinator().approve_and_execute_reference(
+                    grant_id,
+                    approval_digest=approval_digest,
+                    payload={
+                        "rendered_page_digest": rendered_page_digest,
+                        "reference_digest": reference_digest,
+                    },
+                    now=int(time.time()),
+                ))
             if path == "/api/live/prepare":
-                amount = int(payload.get("amount_atomic", 250_000))
+                raw_amount = payload.get("amount_atomic")
+                amount = None if raw_amount in (None, "") else int(raw_amount)
                 document = str(payload.get("document", ""))[:5000]
-                if not document.strip() or amount <= 0 or amount > 10_000_000:
+                service_id = str(payload.get("service_id", "code-analysis-v1"))
+                if not document.strip() or (amount is not None and (amount <= 0 or amount > 10_000_000)):
                     return self._json(400, {"error": "invalid-request"})
                 return self._json(200, live_coordinator().prepare(
-                    document, amount_atomic=amount, agent_id="agent:browser-wallet"
+                    document,
+                    amount_atomic=amount,
+                    agent_id="agent:browser-wallet",
+                    service_id=service_id,
                 ))
             if path == "/api/live/abort":
                 decision_id = str(payload.get("decision_id", ""))
@@ -218,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise
                 return self._json(200, result)
             return self._json(404, {"error": "not-found"})
-        except (LivePaymentError, ExecutionStateError) as exc:
+        except (LivePaymentError, ExecutionStateError, CommercialExecutionError, CommercialLiveError) as exc:
             return self._json(409, {"error": str(exc)})
         except (ValueError, TypeError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid-request"})

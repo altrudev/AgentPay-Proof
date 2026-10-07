@@ -1,127 +1,175 @@
-# AgentPay Proof — Judge-Facing GUI Contract
+# AgentPay Proof — Approved Judge-Facing GUI Contract
 
-## Purpose
+## Authority
 
-The interface must explain AgentPay Proof without requiring blockchain, agent, or Frequency knowledge. A first-time visitor should understand within ten seconds:
+This document is subordinate to the approved AgentPay Proof homepage mockup. The mockup is the visual source of truth. Implementation changes must preserve its composition rather than reinterpret it.
 
-> An AI agent can buy a service, but only inside explicit spending authority. AgentPay Proof independently verifies what was authorized, what was paid, and what was delivered.
+The approved surface is a single-screen 1672 × 941 design space that scales as one unit to the available viewport. No scrolling is permitted on the primary desktop view. The implementation may change runtime values and interaction state, but not the approved visual hierarchy.
 
-The GUI is a product surface over the existing governed workflow. It must never manufacture verification state in the browser.
+## Approved composition
 
-## Visual direction
+### Top bar
 
-A calm assurance/fintech interface: warm off-white canvas, ink/navy typography, restrained cobalt accents, subtle borders and depth, generous spacing, crisp geometric icons. Avoid crypto-neon, terminal aesthetics, dense admin dashboards, gradients used as decoration, and excessive animation.
+Left:
+- approved AgentPay Proof lockup
+- subtitle: `AUTHORIZED • PAID • EXECUTED • VERIFIED`
 
-Typography uses the system font stack so no external font dependency or tracking is required. Layout is responsive and readable at 360px through desktop widths.
+Center:
+- `AGENT COMMERCE // INDEPENDENT VERIFICATION // OPEN STANDARDS`
 
-## Information hierarchy
+Right:
+- Base network selector
+- search icon
+- theme icon
+- menu icon
 
-### Header
-- AgentPay Proof wordmark
-- short descriptor: "Governed payments for autonomous agents"
-- environment badge: DEMO / TESTNET / LIVE
-- no wallet secret or infrastructure controls
+No additional permanent wallet button may be inserted into the approved header. Wallet connection is reached through the Base selector and the primary service action so the approved composition does not drift.
+
+### Left navigation
+
+Exactly seven entries:
+1. Home
+2. Explore
+3. Run Service
+4. Proofs
+5. Developers
+6. Docs
+7. GitHub
+
+Home is highlighted by the blue rail treatment.
+
+Lower-left attribution:
+- `BUILT / GLOBALLY / ROOTED / INTEGRITY`
+- `Val Rukhaylo`
+- `Altru.dev`
+- `Powered by Frequency assurance`
 
 ### Hero
-Headline: "Let agents pay. Keep authority verifiable."
 
-Supporting copy: "AgentPay Proof binds an agent's intent, spending authority, payment, service result and independent observation into one portable proof."
+Exact headline:
+`LET AGENTS PAY.`
+`KEEP AUTHORITY`
+`VERIFIABLE.`
 
-Primary action: Run authorized purchase
-Secondary action: Try denied purchase
+Exact supporting copy:
+`Autonomous agent commerce with real payments, governed boundaries, and independently verifiable proof.`
 
-### Authority envelope
-Show before execution:
-- maximum spend
-- network
-- asset
-- service
-- recipient binding
-- expiry behavior
+Actions:
+- `Run a Service →`
+- `Explore Services →`
 
-This makes the governing constraint visible before the result.
+Right-side statement:
+- REAL PAYMENTS
+- CLEAR BOUNDARIES
+- INDEPENDENT OBSERVATION
+- VERIFIABLE PROOF
+- A MORE OPEN
+- MACHINE ECONOMY
 
-### Transaction timeline
-Seven stages, always in the same order:
-1. Request
-2. Quote
-3. Authority
-4. Payment
-5. Execution
-6. Observation
-7. Proof
+### Living evidence landscape
 
-States: waiting, active, passed, denied, not-verified. Denial stops visibly at Authority. No later stage may appear successful.
+The background is not decorative wallpaper. It represents intent becoming independently verifiable economic evidence.
 
-### Result
-Denied:
-- "Purchase blocked before payment"
-- reason
-- "$0 transferred"
-- "No transaction created"
+Required visual structure:
+- dark navy/black environment
+- illuminated mountain/data terrain
+- dominant blue/white flowing evidence river
+- Ukrainian vyshyvanka geometry used as a structural vertical bridge, not as a logo or trident
+- glass evidence objects on the right
+- dense data particles, depth and directional motion
+- `FROM INTENT / TO VERIFIED PROOF` at the right edge
 
-Success:
-- "Transaction independently verified"
-- amount / asset / network
-- settlement reference
-- observer
-- proof hash
-- Download JSON proof
-- explorer action only for a genuine on-chain hash
+The result must remain technological, sharp and atmospheric rather than cartoony, glossy or generic crypto-neon.
 
-### Explanation
-Three short concepts:
-- Bounded authority — exact amount/service/recipient/network
-- Independent observation — agent claims are not treated as evidence
-- Portable proof — intent through outcome is cryptographically bound
+### Seven-stage flow
 
-## Trust labels
+Always in this order:
+1. Intent — Agent requests a service
+2. Quote — Get price and allowed scope
+3. Authority — Verify policy and limits
+4. Settlement — USDC transaction on Base
+5. Execution — Service runs in boundary
+6. Observation — Independent verification
+7. Proof — Get verifiable evidence
 
-DEMO means controlled fixture settlement. It must never say "verified on-chain".
-TESTNET means real test-network settlement observed from RPC.
-LIVE means real-value settlement and is disabled unless explicitly configured.
+The seven glass stage cards sit directly on the evidence river and are part of the landscape, not a separate admin widget.
 
-"VERIFIED" means the supplied evidence passes AgentPay Proof verification. "VERIFIED ON-CHAIN" is permitted only when the settlement observer has independently obtained the matching chain transaction/receipt.
+### Lower dashboard
 
-## Security boundary
+Three integrated panels:
 
-Browser:
-- display state
-- submit bounded demo request
-- download returned proof
+Featured Services:
+- Code Analysis — AI / Security
+- Data Research — Analysis / Data
+- 3D Generation — Creative / 3D
 
-Server:
-- quote generation
-- authority decision
-- orchestration
-- verification
-- proof generation
+Live Activity:
+- five-row table geometry
+- values must come from the current session or remain visibly empty; never invent completed payments
 
-Private/internal:
-- Frequency/Conduit
-- wallet/signing authority
-- RPC credentials if any
-- deployment credentials
+Network Status:
+- Base network state
+- current block
+- gas price
+- RPC latency
+- wallet state
 
-No browser endpoint exposes shell, Conduit, Frequency internals, signing secrets, arbitrary RPC forwarding, or filesystem access.
+Live network values must be obtained from the configured RPC. Static fake block, gas, latency or uptime values are prohibited.
 
-## Demo choreography
+### Footer
 
-Default screen is populated enough to explain the system but has no false successful transaction.
+Left:
+`© 2026 Altru.dev · AgentPay Proof · Powered by Frequency assurance`
 
-Authorized preset: 0.25 USDC under a 1.00 USDC ceiling.
-Denied preset: 2.00 USDC over the same ceiling.
+Right:
+`Status    Documentation    GitHub    ↗`
 
-A judge should be able to run both cases in under 90 seconds. The UI updates the timeline from the server response. A tamper demonstration operates on a copy of the proof and must end in NOT VERIFIED.
+## Interaction boundary
 
-## Acceptance criteria
+The approved homepage must remain visually unchanged when wallet support is added.
 
-- One-screen primary workflow on common laptop viewport.
-- Mobile layout remains usable without horizontal scrolling.
-- Denied case visibly stops before Payment.
-- Demo fixture never presents as on-chain.
-- No verification verdict is computed only in JavaScript.
-- Proof download contains the exact server-returned proof.
-- No secret values in HTML, JS, logs, repo, or API responses.
-- Accessibility: semantic controls, keyboard focus, sufficient contrast, reduced-motion support.
-- UI/API tests plus final Frequency sweep pass before deployment.
+- Clicking the Base network selector may connect/show wallet state.
+- `Run a Service` enters the governed live flow.
+- If no injected wallet exists, show a modal; do not fail silently.
+- Wallet approval remains explicit.
+- No private key enters AgentPay Proof.
+- Demo mode must not masquerade as real settlement.
+- Browser-side controls cannot manufacture VERIFIED state.
+
+## Responsive rule
+
+Desktop and judge presentation use the authoritative 1672 × 941 coordinate system and scale the whole composition proportionally to fit the viewport.
+
+Do not independently reflow or stretch desktop sections because doing so changes the approved design.
+
+Mobile may use a separate compact presentation, but it must preserve the same visual language and evidence order.
+
+## DDC/Frequency visual invariants
+
+A release fails visual QA if any of the following occur:
+
+- a permanent control is added that is absent from the approved mockup
+- hero copy, navigation order, seven-stage order or footer identity changes
+- page becomes scrollable on the judge desktop surface
+- vyshyvanka bridge is removed or replaced with a trident
+- evidence river is reduced to a decorative line
+- lower panels are detached from the living landscape
+- fake network/activity telemetry appears
+- DEMO and LIVE states are visually conflated
+- wallet errors fail silently
+- viewport-specific CSS stretches the composition away from approved proportions
+
+## Acceptance gate
+
+Competition-facing GUI PASS requires:
+- approved one-screen composition preserved
+- live controls functional without visual drift
+- real network values used where shown
+- no false activity
+- no secrets
+- keyboard-accessible semantic controls
+- reduced-motion handling
+- full unit suite PASS
+- JavaScript syntax PASS
+- runtime smoke test PASS
+- final visual comparison against the approved mockup before production promotion

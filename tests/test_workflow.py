@@ -45,14 +45,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertIsNone(outcome["transaction_request"])
         self.assertEqual(outcome["verification"]["verdict"], "VERIFIED DENIAL")
 
-    def test_permitted_purchase_runs_complete_chain(self):
+    def test_permitted_purchase_runs_complete_code_analysis_chain(self):
         provider = FakeObservedSettlement()
         outcome = self.workflow(provider).purchase(
-            ServiceRequest("One. Two. Three."), agent_id="agent:a", now=self.NOW
+            ServiceRequest("TODO: review this config.", "code"), agent_id="agent:a", now=self.NOW
         )
         self.assertEqual(provider.calls, 1)
         self.assertEqual(outcome["status"], "VERIFIED")
         self.assertEqual(outcome["verification"], {"verdict": "VERIFIED", "errors": []})
+        self.assertEqual(outcome["artifact"]["service_id"], "code-analysis-v1")
+        self.assertGreaterEqual(outcome["artifact"]["finding_count"], 1)
+
+    def test_research_service_is_bound_end_to_end(self):
+        provider = FakeObservedSettlement()
+        outcome = self.workflow(provider).purchase(
+            ServiceRequest("One. Two. Three.", "research"), agent_id="agent:a", now=self.NOW
+        )
+        self.assertEqual(outcome["status"], "VERIFIED")
+        self.assertEqual(outcome["proof"]["intent"]["service_id"], "data-research-v1")
         self.assertEqual(outcome["artifact"]["summary"], "One. Two.")
 
     def test_observer_is_distinct_from_agent(self):

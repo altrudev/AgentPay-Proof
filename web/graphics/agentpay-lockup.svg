@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 90" role="img" aria-label="AgentPay Proof">
+<defs>
+ <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#76e9ff"/><stop offset=".45" stop-color="#0ba4ff"/><stop offset="1" stop-color="#0065dd"/></linearGradient>
+ <linearGradient id="b" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#ecfbff"/><stop offset=".45" stop-color="#67cfff"/><stop offset="1" stop-color="#138cff"/></linearGradient>
+</defs>
+<g transform="translate(2 4)">
+ <path d="M10 72 37 11h28l28 61H72L60 45H43L31 72Z" fill="url(#a)"/>
+ <path d="m37 11 13 21-19 40H10Z" fill="#087dde"/>
+ <path d="m65 11 28 61H72L54 33Z" fill="#27c9ff"/>
+ <path d="M42 45 52 25l10 20Z" fill="url(#b)"/>
+ <path d="M47 43 53 36l7 7-7 7Z" fill="#06162a" stroke="#a8edff" stroke-width="1.5"/>
+</g>
+<g transform="translate(108 19)">
+ <text x="0" y="34" fill="#f4f8fc" font-family="Arial,Helvetica,sans-serif" font-size="37" font-weight="700" letter-spacing="-1.5">AgentPay</text>
+ <text x="170" y="34" fill="#18a8ff" font-family="Arial,Helvetica,sans-serif" font-size="37" font-weight="700" letter-spacing="-1.5">Proof</text>
+ <text x="1" y="56" fill="#dce8f2" font-family="Consolas,monospace" font-size="8" font-weight="700" letter-spacing="1.5">AUTHORIZED  •  PAID  •  EXECUTED  •  VERIFIED</text>
+</g>
+</svg>
