@@ -11,6 +11,7 @@ from src.commercial import (
     CapabilityOffer,
     CommercialIntentCapsule,
     CommercialPlan,
+    OfferEvaluation,
     evaluate_offer,
     make_commercial_proof,
     plan_commercial_action,
@@ -456,7 +457,15 @@ class CommercialCoordinator:
             selected_offer_digest=plan_raw["selected_offer_digest"],
             selected_offer_id=plan_raw["selected_offer_id"],
             permitted_offer_ids=tuple(plan_raw["permitted_offer_ids"]),
-            rejected=tuple(),
+            rejected=tuple(
+                OfferEvaluation(
+                    offer_id=item["offer_id"],
+                    decision=item["decision"],
+                    reasons=tuple(item["reasons"]),
+                    disclosure_count=item["disclosure_count"],
+                )
+                for item in plan_raw["rejected"]
+            ),
             frontier_offer_ids=tuple(plan_raw["frontier_offer_ids"]),
             requires_human_approval=plan_raw["requires_human_approval"],
             reason=plan_raw["reason"],
