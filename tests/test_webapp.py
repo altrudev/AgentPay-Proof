@@ -8,20 +8,34 @@ from src.webapp import Handler, ThreadingHTTPServer, run_demo, tamper_demo
 
 class WebAppTests(unittest.TestCase):
     def test_authorized_demo_is_explicitly_demo_and_verified(self):
-        out = run_demo(250_000, "One. Two. Three.")
+        out = run_demo(250_000, "TODO: inspect.", "code")
         self.assertEqual(out["environment"], "DEMO")
         self.assertEqual(out["status"], "VERIFIED")
         self.assertEqual(out["proof"]["settlement"]["transaction_hash"], "demo:not-on-chain")
+        self.assertEqual(out["artifact"]["service_id"], "code-analysis-v1")
 
     def test_denied_demo_has_no_settlement(self):
-        out = run_demo(2_000_000, "One.")
+        out = run_demo(2_000_000, "One.", "code")
         self.assertEqual(out["status"], "DENIED")
         self.assertIsNone(out["proof"]["settlement"])
 
     def test_tamper_endpoint_logic_fails_verification(self):
-        out = run_demo(250_000, "One.")
+        out = run_demo(250_000, "One.", "code")
         tampered = tamper_demo(out["proof"])
         self.assertEqual(tampered["verification"]["verdict"], "NOT VERIFIED")
+
+    def test_catalog_endpoint_is_truthful_and_machine_readable(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{server.server_port}/api/catalog") as r:
+                data = json.load(r)
+                self.assertEqual(data["schema"], "agentpay-catalog/1")
+                self.assertEqual([s["slug"] for s in data["services"]], ["code", "research", "3d"])
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_logo_asset_is_served(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
