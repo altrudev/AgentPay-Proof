@@ -508,7 +508,16 @@ class CommercialCoordinator:
             outcome=assessment.reason,
             observed_at=now,
         )
-        verification = verify_commercial_proof(proof)
+        verification = verify_commercial_bundle(
+            capsule=capsule,
+            plan=plan,
+            offer=selected,
+            grant=grant,
+            action_receipt=result.action_receipt,
+            artifact=result.artifact,
+            assessment=assessment,
+            proof=proof,
+        )
         if verification["verdict"] != "VERIFIED":
             raise CommercialExecutionError("commercial-proof-verification-failed")
         self.journal.consume(grant_id)
@@ -524,3 +533,83 @@ class CommercialCoordinator:
             "verification": verification,
             "monetary_settlement": "NOT_PERFORMED",
         }
+
+
+def verify_commercial_bundle(
+    *,
+    capsule: CommercialIntentCapsule,
+    plan: CommercialPlan,
+    offer: CapabilityOffer,
+    grant: CommercialGrant,
+    action_receipt: dict[str, Any],
+    artifact: dict[str, Any],
+    assessment: CommercialOutcomeAssessment,
+    proof: dict[str, Any],
+) -> dict[str, Any]:
+    errors: list[str] = []
+
+    if grant.capsule_digest != capsule.digest:
+        errors.append("grant-capsule-binding-mismatch")
+    if grant.plan_digest != plan.digest:
+        errors.append("grant-plan-binding-mismatch")
+    if grant.offer_digest != offer.digest or grant.offer_id != offer.offer_id:
+        errors.append("grant-offer-binding-mismatch")
+    if plan.selected_offer_id != offer.offer_id or plan.selected_offer_digest != offer.digest:
+        errors.append("plan-selected-offer-mismatch")
+
+    if action_receipt.get("grant_digest") != grant.digest:
+        errors.append("action-grant-binding-mismatch")
+    if action_receipt.get("provider_id") != grant.provider_id:
+        errors.append("action-provider-binding-mismatch")
+    if action_receipt.get("capability") != grant.capability:
+        errors.append("action-capability-binding-mismatch")
+    if action_receipt.get("artifact_digest") != canonical_hash(artifact):
+        errors.append("action-artifact-binding-mismatch")
+
+    supplied_action_hash = action_receipt.get("action_proof_hash")
+    if not isinstance(supplied_action_hash, str) or not supplied_action_hash:
+        errors.append("action-proof-hash-invalid")
+    else:
+        receipt_body = {
+            k: v for k, v in action_receipt.items()
+            if k != "action_proof_hash"
+        }
+        if canonical_hash(receipt_body) != supplied_action_hash:
+            errors.append("action-proof-hash-mismatch")
+
+    if set(grant.evidence_required) - set(action_receipt.get("evidence", [])):
+        errors.append("action-required-evidence-missing")
+    if set(artifact.get("disclosures_used", [])) != set(grant.disclosures):
+        errors.append("artifact-disclosure-binding-mismatch")
+    if int(artifact.get("confidence_bps", -1)) != assessment.observed_confidence_bps:
+        errors.append("assessment-confidence-binding-mismatch")
+    if assessment.evidence_digest != canonical_hash(action_receipt):
+        errors.append("assessment-evidence-binding-mismatch")
+    if assessment.verdict != "PASS":
+        errors.append("assessment-not-pass")
+
+    if proof.get("capsule_digest") != capsule.digest:
+        errors.append("proof-capsule-binding-mismatch")
+    if proof.get("plan_digest") != plan.digest:
+        errors.append("proof-plan-binding-mismatch")
+    if proof.get("selected_offer_id") != offer.offer_id:
+        errors.append("proof-offer-id-binding-mismatch")
+    if proof.get("selected_offer_digest") != offer.digest:
+        errors.append("proof-offer-digest-binding-mismatch")
+    if proof.get("authority_digest") != grant.digest:
+        errors.append("proof-grant-binding-mismatch")
+    if proof.get("action_proof_hash") != action_receipt.get("action_proof_hash"):
+        errors.append("proof-action-binding-mismatch")
+    if proof.get("outcome") != assessment.reason:
+        errors.append("proof-outcome-binding-mismatch")
+    if proof.get("observed_at") != assessment.observed_at:
+        errors.append("proof-observation-time-mismatch")
+
+    outer = verify_commercial_proof(proof)
+    if outer["verdict"] != "VERIFIED":
+        errors.extend(outer["errors"])
+
+    return {
+        "verdict": "VERIFIED" if not errors else "NOT VERIFIED",
+        "errors": sorted(set(errors)),
+    }
