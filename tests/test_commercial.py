@@ -1,6 +1,7 @@
 import copy
 import unittest
 
+from src.commercial_demo import release_validation_demo
 from src.commercial import (
     CapabilityOffer,
     CommercialIntentCapsule,
@@ -223,6 +224,15 @@ class CommercialIntentTests(unittest.TestCase):
         verdict = verify_commercial_proof(tampered)
         self.assertEqual(verdict["verdict"], "NOT VERIFIED")
         self.assertIn("commercial-proof-hash-mismatch", verdict["errors"])
+
+    def test_reference_demo_rejects_source_disclosure_and_dominated_offer(self):
+        demo = release_validation_demo(now=NOW)
+        self.assertEqual(demo["execution"], {"status": "NOT_EXECUTED", "reason": "planning-demo-only"})
+        self.assertEqual(demo["plan"]["selected_offer_id"], "privacy-render-validator")
+        rejected = {item["offer_id"]: item for item in demo["plan"]["rejected"]}
+        self.assertIn("prohibited-disclosure-required", rejected["source-code-validator"]["reasons"])
+        self.assertNotIn("premium-render-validator", demo["plan"]["frontier_offer_ids"])
+        self.assertTrue(demo["plan"]["requires_human_approval"])
 
     def test_commercial_proof_requires_a_selected_offer(self):
         intent = capsule()
