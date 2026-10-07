@@ -24,6 +24,21 @@ class WebAppTests(unittest.TestCase):
         tampered = tamper_demo(out["proof"])
         self.assertEqual(tampered["verification"]["verdict"], "NOT VERIFIED")
 
+    def test_commercial_demo_endpoint_plans_but_never_executes(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{server.server_port}/api/commercial/demo") as r:
+                data = json.load(r)
+                self.assertEqual(data["schema"], "agentpay-commercial-demo/1")
+                self.assertEqual(data["plan"]["selected_offer_id"], "privacy-render-validator")
+                self.assertEqual(data["execution"]["status"], "NOT_EXECUTED")
+                self.assertTrue(data["plan"]["requires_human_approval"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_catalog_endpoint_is_truthful_and_machine_readable(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
