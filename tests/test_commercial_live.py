@@ -87,15 +87,15 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             payload=self.payload,
             now=NOW + 1,
         )
-        self.assertEqual(out["status"], "AWAITING_WALLET")
+        self.assertEqual(out["status"], "AWAITING_EXECUTION_APPROVAL")
         self.assertEqual(out["grant_id"], self.grant_id)
         self.assertEqual(out["route"]["provider_id"], "provider:render-only")
         self.assertEqual(out["route"]["payment_amount_atomic"], 30_000)
-        self.assertEqual(out["wallet_request"]["chainId"], hex(8453))
-        self.assertEqual(out["wallet_request"]["to"], TOKEN)
+        self.assertIsNone(out["wallet_request"])
+        self.assertTrue(out["execution_approval_digest"])
         self.assertEqual(out["quote"]["recipient"], RECIPIENT)
         self.assertEqual(out["quote"]["amount_atomic"], 30_000)
-        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "APPROVED")
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
         self.assertEqual(
             self.payment_journal.get(out["payment_decision_id"]).state,
             "PREPARED",
@@ -123,6 +123,38 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             )
         self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
 
+    def test_exact_execution_approval_releases_wallet_request(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        confirmed = self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
+        )
+        self.assertEqual(confirmed["status"], "AWAITING_WALLET")
+        self.assertEqual(confirmed["wallet_request"]["chainId"], hex(8453))
+        self.assertEqual(confirmed["wallet_request"]["to"], TOKEN)
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "APPROVED")
+
+    def test_wrong_execution_approval_never_releases_wallet_request(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        with self.assertRaisesRegex(CommercialLiveError, "execution-approval-mismatch"):
+            self.paid.confirm_wallet(
+                self.grant_id,
+                out["payment_decision_id"],
+                execution_approval_digest="wrong",
+            )
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
+
     def test_duplicate_wallet_prepare_is_idempotent_before_dispatch(self):
         first = self.paid.prepare_wallet(
             self.grant_id,
@@ -137,7 +169,26 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             now=NOW + 1,
         )
         self.assertEqual(first["payment_decision_id"], second["payment_decision_id"])
-        self.assertEqual(first["wallet_request"], second["wallet_request"])
+        self.assertEqual(first["execution_approval_digest"], second["execution_approval_digest"])
+        self.assertIsNone(first["wallet_request"])
+        self.assertEqual(self.payment_journal.get(first["payment_decision_id"]).state, "PREPARED")
+
+    def test_different_payload_cannot_prepare_second_payment_authority(self):
+        first = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        changed = dict(self.payload)
+        changed["reference_digest"] = "reference:changed"
+        with self.assertRaisesRegex(CommercialLiveError, "commercial-payment-context-mismatch"):
+            self.paid.prepare_wallet(
+                self.grant_id,
+                commercial_approval_digest=self.approval,
+                payload=changed,
+                now=NOW + 1,
+            )
         self.assertEqual(self.payment_journal.get(first["payment_decision_id"]).state, "PREPARED")
 
     def test_explicit_wallet_rejection_aborts_payment_and_commercial_grant(self):
@@ -158,6 +209,11 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             commercial_approval_digest=self.approval,
             payload=self.payload,
             now=NOW + 1,
+        )
+        self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
         )
         result = self.paid.reconcile(
             self.grant_id,
@@ -184,6 +240,11 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             payload=self.payload,
             now=NOW + 1,
         )
+        self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
+        )
         with self.assertRaisesRegex(CommercialLiveError, "commercial-settlement-not-observed"):
             self.paid.reconcile(
                 self.grant_id,
@@ -201,6 +262,11 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             commercial_approval_digest=self.approval,
             payload=self.payload,
             now=NOW + 1,
+        )
+        self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
         )
         self.paid.reconcile(
             self.grant_id,
