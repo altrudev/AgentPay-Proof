@@ -17,7 +17,7 @@ button,a{font:inherit}
 button{color:inherit}
 body{display:grid;place-items:center}
 .shell{
-  position:relative;width:1672px;height:940px;
+  position:absolute;left:50%;top:50%;width:1672px;height:940px;
   display:grid;grid-template-columns:198px 1fr;grid-template-rows:112px 1fr 46px;
   overflow:hidden;border:1px solid rgba(76,147,205,.5);border-radius:14px;
   background:#020914;box-shadow:0 0 0 10px #020812;
@@ -124,7 +124,7 @@ body.dim .shell{filter:brightness(.82) saturate(.92)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media(max-width:900px){
   body{overflow:auto;display:block}
-  .shell{position:static;width:100%;height:auto;transform:none!important;border-radius:0;display:block;box-shadow:none}
+  .shell{position:static;left:auto;top:auto;width:100%;height:auto;transform:none!important;border-radius:0;display:block;box-shadow:none}
   .topbar{position:sticky;top:0;display:flex;justify-content:space-between;height:80px;padding:10px 12px;background:#03101d}
   .brand{width:260px;height:58px}.brand img{width:260px;height:58px}
   .top-copy{display:none}.top-actions{margin-top:9px}.network{min-width:120px}.icon{display:none}
