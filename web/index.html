@@ -25,11 +25,11 @@
   <aside class="rail">
     <nav>
       <a class="active" href="#home">[01] <b>Home</b></a>
-      <a href="#services">[02] Explore</a>
+      <button id="nav-explore">[02] Explore</button>
       <button id="nav-run">[03] Run Service</button>
       <button id="nav-proofs">[04] Proofs</button>
-      <a href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">[05] Developers</a>
-      <a href="https://github.com/altrudev/AgentPay-Proof/tree/main/docs" target="_blank" rel="noopener">[06] Docs</a>
+      <button id="nav-developers">[05] Developers</button>
+      <button id="nav-docs">[06] Docs</button>
       <a href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">[07] GitHub</a>
     </nav>
     <div class="signature">
@@ -76,9 +76,9 @@
       <article class="panel services" id="services">
         <div class="panel-head"><h2>Featured Services</h2><a href="#services">View all →</a></div>
         <div class="service-grid">
-          <button class="service svc" data-service="code"><img src="/assets/approved-v6/service-code-analysis.webp" alt=""><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><span>AI</span><span>Security</span><b>1.00 USDC</b><i>→</i></footer></button>
-          <button class="service svc" data-service="research"><img src="/assets/approved-v6/service-data-research.webp" alt=""><h3>Data Research</h3><p>Find and summarize<br>public information</p><footer><span>Analysis</span><span>Data</span><b>1.00 USDC</b><i>→</i></footer></button>
-          <button class="service svc" data-service="3d"><img src="/assets/approved-v6/service-3d-generation.webp" alt=""><h3>3D Generation</h3><p>Create optimized 3D assets<br>(Thrixel)</p><footer><span>Creative</span><span>3D</span><b>1.00 USDC</b><i>→</i></footer></button>
+          <button class="service svc" data-service="code"><img src="/assets/approved-v6/service-code-analysis.webp" alt=""><h3>Code Analysis</h3><p>Security and quality scan<br>with verified report</p><footer><span>AI</span><span>Security</span><b data-price="code">— USDC</b><i>→</i></footer></button>
+          <button class="service svc" data-service="research"><img src="/assets/approved-v6/service-data-research.webp" alt=""><h3>Data Research</h3><p>Find and summarize<br>public information</p><footer><span>Analysis</span><span>Data</span><b data-price="research">— USDC</b><i>→</i></footer></button>
+          <button class="service svc" data-service="3d"><img src="/assets/approved-v6/service-3d-generation.webp" alt=""><h3>3D Generation</h3><p>Create deterministic OBJ artifact<br>with verifiable evidence</p><footer><span>Creative</span><span>3D</span><b data-price="3d">— USDC</b><i>→</i></footer></button>
         </div>
       </article>
 
@@ -103,8 +103,37 @@
   </main>
 
   <footer class="footer"><span>© 2026&nbsp;&nbsp; Altru.dev &nbsp;·&nbsp; AgentPay Proof &nbsp;·&nbsp; Powered by Frequency assurance</span><span>Status&nbsp;&nbsp;&nbsp;&nbsp; Documentation&nbsp;&nbsp;&nbsp;&nbsp; GitHub&nbsp;&nbsp;&nbsp;&nbsp; ↗</span></footer>
-  <dialog id="evidence-dialog"><form method="dialog"><header><h2>Transaction Proof</h2><button>×</button></header><div id="evidence-grid"></div><pre id="evidence-json"></pre></form></dialog>
-  <dialog id="status-dialog"><form method="dialog"><header><h2 id="status-title">AgentPay Status</h2><button>×</button></header><p id="status-message"></p><div id="status-actions"></div></form></dialog>
+  <dialog id="service-dialog" class="work-dialog">
+    <form method="dialog">
+      <header><div><small id="service-kicker">GOVERNED SERVICE</small><h2 id="service-title">Run a Service</h2></div><button aria-label="Close">×</button></header>
+      <p id="service-description"></p>
+      <div class="service-meta"><span id="service-price">— USDC</span><span>Base · USDC</span><span>Wallet approval required</span></div>
+      <label id="service-input-label" for="service-input">Request</label>
+      <textarea id="service-input" maxlength="5000" rows="7"></textarea>
+      <div class="dialog-note" id="service-note">AgentPay binds the exact request, service, recipient, asset and amount before the wallet sees a transaction.</div>
+      <div class="dialog-actions"><button type="button" id="service-cancel">Cancel</button><button type="button" id="service-submit" class="primary-action">Prepare Payment →</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="evidence-dialog" class="work-dialog">
+    <form method="dialog">
+      <header><div><small>PORTABLE EVIDENCE</small><h2>Transaction Proof</h2></div><button aria-label="Close">×</button></header>
+      <div id="evidence-grid"></div>
+      <div class="dialog-actions evidence-actions"><button type="button" id="proof-download">Download Proof</button><button type="button" id="artifact-download">Download Artifact</button></div>
+      <pre id="evidence-json"></pre>
+    </form>
+  </dialog>
+
+  <dialog id="content-dialog" class="work-dialog content-dialog">
+    <form method="dialog">
+      <header><div><small id="content-kicker">AGENTPAY PROOF</small><h2 id="content-title">AgentPay</h2></div><button aria-label="Close">×</button></header>
+      <div id="content-body" class="content-body"></div>
+    </form>
+  </dialog>
+
+  <dialog id="status-dialog" class="work-dialog">
+    <form method="dialog"><header><div><small id="status-kicker">AGENTPAY COMPANION</small><h2 id="status-title">AgentPay Status</h2></div><button aria-label="Close">×</button></header><p id="status-message"></p><div id="status-actions" class="dialog-actions"></div></form>
+  </dialog>
 </div>
 <script src="/app.js"></script>
 </body>
