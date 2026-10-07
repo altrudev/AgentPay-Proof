@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import threading
 import unittest
 from urllib.request import Request, urlopen
@@ -38,6 +40,50 @@ class WebAppTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_commercial_prepare_and_explicit_execute_reference_boundary(self):
+        fd, db_path = tempfile.mkstemp()
+        os.close(fd)
+        os.unlink(db_path)
+        previous = os.environ.get("AGENTPAY_COMMERCIAL_STATE_DB")
+        os.environ["AGENTPAY_COMMERCIAL_STATE_DB"] = db_path
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{server.server_port}/api/commercial/prepare-demo") as r:
+                prepared = json.load(r)
+            self.assertEqual(prepared["status"], "PREPARED")
+            self.assertEqual(prepared["execution"], "NOT_DISPATCHED")
+            self.assertTrue(prepared["requires_human_approval"])
+
+            payload = json.dumps({
+                "grant_id": prepared["grant"]["grant_id"],
+                "approval_digest": prepared["approval_digest"],
+                "rendered_page_digest": "rendered:test",
+                "reference_digest": "reference:test",
+            }).encode()
+            req = Request(
+                f"http://127.0.0.1:{server.server_port}/api/commercial/execute-demo",
+                data=payload,
+                method="POST",
+                headers={"content-type": "application/json"},
+            )
+            with urlopen(req) as r:
+                executed = json.load(r)
+            self.assertEqual(executed["status"], "VERIFIED")
+            self.assertEqual(executed["execution_state"], "CONSUMED")
+            self.assertEqual(executed["monetary_settlement"], "NOT_PERFORMED")
+            self.assertEqual(executed["verification"], {"verdict": "VERIFIED", "errors": []})
+        finally:
+            server.shutdown()
+            server.server_close()
+            if previous is None:
+                os.environ.pop("AGENTPAY_COMMERCIAL_STATE_DB", None)
+            else:
+                os.environ["AGENTPAY_COMMERCIAL_STATE_DB"] = previous
+            if os.path.exists(db_path):
+                os.unlink(db_path)
 
     def test_catalog_endpoint_is_truthful_and_machine_readable(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
