@@ -48,6 +48,13 @@ class ApprovedGuiContractTests(unittest.TestCase):
             self.assertIn(selector, CSS)
             self.assertIn(geometry, CSS)
 
+    def test_art_fidelity_budget_is_bounded(self):
+        approved = ROOT / "web" / "approved"
+        files = list(approved.glob("*.png"))
+        self.assertEqual(len(files), 9)
+        total_bytes = sum(path.stat().st_size for path in files)
+        self.assertLessEqual(total_bytes, 2_500_000)
+
     def test_runtime_truth_overlays_exist(self):
         for target in ["network-block", "network-gas", "network-rpc", "wallet-state", "activity-list"]:
             self.assertIn(f'id="{target}"', HTML)
