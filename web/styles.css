@@ -27,3 +27,5 @@ dialog{z-index:50;width:min(760px,90vw);border:1px solid rgba(92,162,220,.42);ba
 #evidence-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:16px 0}#evidence-grid article{border:1px solid rgba(98,165,222,.25);padding:10px;border-radius:5px}#evidence-grid small{display:block;color:#72cfff;margin-bottom:4px}#evidence-json{max-height:350px;overflow:auto;background:#020811;padding:12px;border:1px solid rgba(98,165,222,.2);font-size:11px}
 body.dim .stage{filter:brightness(.82) saturate(.92)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.stage-state span:nth-child(1){left:34px}.stage-state span:nth-child(2){left:238px}.stage-state span:nth-child(3){left:442px}.stage-state span:nth-child(4){left:646px}.stage-state span:nth-child(5){left:850px}.stage-state span:nth-child(6){left:1054px}.stage-state span:nth-child(7){left:1258px}

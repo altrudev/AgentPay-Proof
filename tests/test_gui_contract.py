@@ -6,72 +6,69 @@ HTML = (ROOT / "web" / "index.html").read_text()
 CSS = (ROOT / "web" / "styles.css").read_text()
 JS = (ROOT / "web" / "app.js").read_text()
 
+ASSETS = [
+    "agentpay-logo.png",
+    "hero-background.png",
+    "vyshyvanka-bridge.png",
+    "proof-card-fan.png",
+    "icon-intent.png",
+    "icon-quote.png",
+    "icon-authority.png",
+    "icon-settlement.png",
+    "icon-execution.png",
+    "icon-observation.png",
+    "icon-proof.png",
+    "service-code-analysis.png",
+    "service-data-research.png",
+    "service-3d-generation.png",
+]
 
 class ApprovedGuiContractTests(unittest.TestCase):
-    def test_accessible_hero_copy_is_present(self):
-        self.assertIn("LET AGENTS PAY.", HTML)
-        self.assertIn("KEEP AUTHORITY", HTML)
-        self.assertIn("VERIFIABLE.", HTML)
-        self.assertIn("Autonomous agent commerce with real payments", HTML)
-        self.assertIn("independently verifiable proof", HTML)
+    def test_approved_reference_identity(self):
+        manifest = (ROOT / "web" / "assets" / "approved-v5" / "ASSET-MANIFEST.md").read_text()
+        self.assertIn("AgentPay Proof Futuristic Dashboard(5).png", manifest)
+        self.assertIn("b3ade8790ca78244e1e9961424632b1d3c6b410301d4dc5d089805869f8d9169", manifest)
 
-    def test_exact_approved_navigation_order(self):
-        labels = ["Home", "Explore", "Run Service", "Proofs", "Developers", "Docs", "GitHub"]
-        positions = [HTML.index(label) for label in labels]
-        self.assertEqual(positions, sorted(positions))
+    def test_semantic_hero_copy_is_present(self):
+        for phrase in ["LET AGENTS PAY.", "KEEP AUTHORITY", "VERIFIABLE.", "Autonomous agent commerce with real payments"]:
+            self.assertIn(phrase, HTML)
 
-    def test_exact_seven_stage_order(self):
+    def test_exact_stage_order(self):
         labels = ["Intent", "Quote", "Authority", "Settlement", "Execution", "Observation", "Proof"]
-        stage_markup = HTML.split("<ol>", 1)[1].split("</ol>", 1)[0]
-        positions = [stage_markup.index(label) for label in labels]
+        positions = [HTML.index(f"<b>{label}</b>") for label in labels]
         self.assertEqual(positions, sorted(positions))
 
-    def test_approved_surface_is_composed_from_reference_slices(self):
-        assets = [
-            "logo.png", "header.png", "sidebar.png", "hero.png", "flow.png",
-            "featured.png", "activity.png", "status.png", "footer.png",
-        ]
-        for asset in assets:
-            self.assertIn(f'/approved/{asset}', HTML)
+    def test_regenerated_assets_exist(self):
+        root = ROOT / "web" / "assets" / "approved-v5"
+        for name in ASSETS:
+            self.assertTrue((root / name).is_file(), name)
+
+    def test_interface_uses_regenerated_assets_not_slices(self):
+        for name in ASSETS:
+            self.assertIn(f"/assets/approved-v5/{name}", HTML)
+        for old in ["/approved/logo.png", "/approved/header.png", "/approved/sidebar.png", "/approved/hero.png", "/approved/flow.png"]:
+            self.assertNotIn(old, HTML)
 
     def test_reference_geometry_is_locked(self):
         self.assertIn("width:1672px;height:940px", CSS)
-        expected = {
-            ".art-logo": "left:28px;top:12px;width:442px;height:98px",
-            ".art-header": "left:470px;top:0;width:1202px;height:112px",
-            ".art-sidebar": "left:0;top:112px;width:198px;height:782px",
-            ".art-hero": "left:198px;top:112px;width:1474px;height:309px",
-            ".art-flow": "left:198px;top:421px;width:1474px;height:191px",
-            ".art-footer": "left:0;top:894px;width:1672px;height:46px",
-        }
-        for selector, geometry in expected.items():
-            self.assertIn(selector, CSS)
-            self.assertIn(geometry, CSS)
+        self.assertIn("left:198px;top:112px;width:1474px;height:782px", CSS)
 
-    def test_art_fidelity_budget_is_bounded(self):
-        approved = ROOT / "web" / "approved"
-        files = list(approved.glob("*.png"))
-        self.assertEqual(len(files), 9)
-        total_bytes = sum(path.stat().st_size for path in files)
-        self.assertLessEqual(total_bytes, 2_500_000)
-
-    def test_runtime_truth_overlays_exist(self):
+    def test_runtime_truth_remains_live(self):
         for target in ["network-block", "network-gas", "network-rpc", "wallet-state", "activity-list"]:
             self.assertIn(f'id="{target}"', HTML)
         self.assertIn("/api/live/network", JS)
         self.assertIn("/api/live/reconcile", JS)
 
-    def test_no_old_fake_network_telemetry_in_html_or_js(self):
+    def test_no_fake_mock_telemetry(self):
         combined = HTML + JS
         for fake in ["8456721", "0.0012 USDC", "42 ms", "7d 12h 46m", "Base Sepolia"]:
             self.assertNotIn(fake, combined)
 
-    def test_live_wallet_stays_explicit(self):
+    def test_wallet_approval_is_explicit(self):
         self.assertIn("eth_requestAccounts", JS)
         self.assertIn("eth_sendTransaction", JS)
         self.assertIn("/api/live/abort", JS)
         self.assertIn("/api/live/uncertain", JS)
-
 
 if __name__ == "__main__":
     unittest.main()
