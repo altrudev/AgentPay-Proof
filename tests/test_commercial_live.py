@@ -9,6 +9,7 @@ from src.execution import ExecutionJournal
 from src.live import LiveConfig
 from src.model import Settlement
 from src.settlement import SettlementError
+from src.provider_admission import ProviderRegistry, reference_provider_binding
 
 TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 RECIPIENT = "0x000000000000000000000000000000000000beef"
@@ -54,11 +55,18 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             recipient=RECIPIENT,
             maximum_amount_atomic=1_000_000,
         )
+        self.registry = ProviderRegistry()
+        admission = self.registry.admit(
+            reference_provider_binding(payment_recipient=RECIPIENT, now=NOW),
+            now=NOW,
+        )
+        self.assertEqual(admission.decision, "ADMIT")
         self.paid = PaidCommercialCoordinator(
             commercial_journal=self.commercial_journal,
             payment_journal=self.payment_journal,
             live_config=self.config,
             rpc=FakeRpc(),
+            provider_registry=self.registry,
         )
         self.capsule, self.offers = release_validation_objects(now=NOW)
         self.prepared = self.commercial.prepare(self.capsule, self.offers, now=NOW)
@@ -79,6 +87,45 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
     @property
     def approval(self):
         return self.prepared["approval_digest"]
+
+    def test_unadmitted_provider_cannot_prepare_paid_route(self):
+        empty = PaidCommercialCoordinator(
+            commercial_journal=self.commercial_journal,
+            payment_journal=self.payment_journal,
+            live_config=self.config,
+            rpc=FakeRpc(),
+            provider_registry=ProviderRegistry(),
+        )
+        with self.assertRaisesRegex(CommercialLiveError, "provider-not-admitted"):
+            empty.prepare_wallet(
+                self.grant_id,
+                commercial_approval_digest=self.approval,
+                payload=self.payload,
+                now=NOW + 1,
+            )
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
+
+    def test_recipient_binding_must_match_live_settlement_recipient(self):
+        wrong_registry = ProviderRegistry()
+        binding = reference_provider_binding(
+            payment_recipient="0x000000000000000000000000000000000000dead",
+            now=NOW,
+        )
+        self.assertEqual(wrong_registry.admit(binding, now=NOW).decision, "ADMIT")
+        wrong = PaidCommercialCoordinator(
+            commercial_journal=self.commercial_journal,
+            payment_journal=self.payment_journal,
+            live_config=self.config,
+            rpc=FakeRpc(),
+            provider_registry=wrong_registry,
+        )
+        with self.assertRaisesRegex(CommercialLiveError, "provider-recipient-binding-mismatch"):
+            wrong.prepare_wallet(
+                self.grant_id,
+                commercial_approval_digest=self.approval,
+                payload=self.payload,
+                now=NOW + 1,
+            )
 
     def test_wallet_prepare_binds_exact_commercial_grant_and_route(self):
         out = self.paid.prepare_wallet(
@@ -140,6 +187,47 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
         self.assertEqual(confirmed["wallet_request"]["chainId"], hex(8453))
         self.assertEqual(confirmed["wallet_request"]["to"], TOKEN)
         self.assertEqual(self.commercial_journal.get(self.grant_id).state, "APPROVED")
+
+    def test_provider_revocation_before_wallet_release_blocks_dispatch(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        self.registry.revoke("provider:render-only")
+        with self.assertRaisesRegex(CommercialLiveError, "provider-not-admitted"):
+            self.paid.confirm_wallet(
+                self.grant_id,
+                out["payment_decision_id"],
+                execution_approval_digest=out["execution_approval_digest"],
+                now=NOW + 1,
+            )
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
+
+    def test_provider_revocation_after_wallet_release_does_not_strand_reconciliation(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
+        )
+        self.registry.revoke("provider:render-only")
+        result = self.paid.reconcile(
+            self.grant_id,
+            out["payment_decision_id"],
+            "0xabc123456789",
+            SENDER,
+            now=NOW + 2,
+        )
+        self.assertEqual(result["status"], "VERIFIED")
+        self.assertEqual(result["commercial_state"], "CONSUMED")
 
     def test_wrong_execution_approval_never_releases_wallet_request(self):
         out = self.paid.prepare_wallet(

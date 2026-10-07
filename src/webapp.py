@@ -16,6 +16,7 @@ from src.commercial_execution import (
 )
 from src.commercial_live import CommercialLiveError, PaidCommercialCoordinator
 from src.execution import ExecutionJournal
+from src.provider_admission import reference_provider_registry
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
@@ -75,10 +76,15 @@ def paid_commercial_coordinator() -> PaidCommercialCoordinator:
     if config is None:
         raise CommercialLiveError("live-mode-not-configured")
     Path(config.journal_path).parent.mkdir(parents=True, exist_ok=True)
+    registry = reference_provider_registry(
+        payment_recipient=config.recipient,
+        now=int(time.time()),
+    )
     return PaidCommercialCoordinator(
         commercial_journal=commercial_journal(),
         payment_journal=ExecutionJournal(config.journal_path),
         live_config=config,
+        provider_registry=registry,
     )
 
 

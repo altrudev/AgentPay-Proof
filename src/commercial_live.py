@@ -21,6 +21,7 @@ from src.execution import ExecutionJournal, ExecutionStateError
 from src.live import LiveConfig
 from src.model import Authority, Intent, Quote, canonical_hash, decide
 from src.settlement import JsonRpcClient, SettlementError, transaction_request
+from src.provider_admission import ProviderAdmission, ProviderBinding, ProviderRegistry
 
 
 class CommercialLiveError(RuntimeError):
@@ -42,6 +43,8 @@ class CapabilityRoute:
     provider_id: str
     capability: str
     adapter_id: str
+    provider_binding_digest: str
+    provider_admission_digest: str
     request_schema: str
     observation_schema: str
     payment_chain_id: int
@@ -57,6 +60,8 @@ class CapabilityRoute:
             ("provider_id", "route-provider-required"),
             ("capability", "route-capability-required"),
             ("adapter_id", "route-adapter-required"),
+            ("provider_binding_digest", "route-provider-binding-required"),
+            ("provider_admission_digest", "route-provider-admission-required"),
             ("request_schema", "route-request-schema-required"),
             ("observation_schema", "route-observation-schema-required"),
         ):
@@ -80,15 +85,28 @@ def build_reference_paid_route(
     grant: CommercialGrant,
     offer: CapabilityOffer,
     config: LiveConfig,
+    registry: ProviderRegistry,
     *,
     now: int,
 ) -> CapabilityRoute:
-    if grant.provider_id != "provider:render-only":
-        raise CommercialLiveError("provider-route-not-configured")
-    if grant.capability != "browser.render.verify":
-        raise CommercialLiveError("capability-route-not-configured")
+    try:
+        binding, admission = registry.require(
+            grant.provider_id,
+            grant.capability,
+            now=now,
+        )
+    except ValueError as exc:
+        raise CommercialLiveError(str(exc)) from exc
     if offer.digest != grant.offer_digest:
         raise CommercialLiveError("route-offer-binding-mismatch")
+    if binding.settlement_asset != grant.settlement_asset:
+        raise CommercialLiveError("provider-settlement-asset-mismatch")
+    if binding.maximum_retention_seconds < grant.retention_seconds:
+        raise CommercialLiveError("provider-retention-binding-mismatch")
+    if set(grant.disclosures) - set(binding.allowed_disclosures):
+        raise CommercialLiveError("provider-disclosure-binding-mismatch")
+    if binding.payment_recipient != _address(config.recipient):
+        raise CommercialLiveError("provider-recipient-binding-mismatch")
     if grant.settlement_asset != "USDC":
         raise CommercialLiveError("route-settlement-asset-unsupported")
     if grant.exact_price_atomic <= 0:
@@ -101,9 +119,11 @@ def build_reference_paid_route(
         "offer_digest": offer.digest,
         "provider_id": grant.provider_id,
         "capability": grant.capability,
-        "adapter_id": "reference.browser-render.verify/1",
-        "request_schema": "agentpay-render-verify-request/1",
-        "observation_schema": "agentpay-render-verify-observation/1",
+        "adapter_id": binding.adapter_id,
+        "provider_binding_digest": binding.digest,
+        "provider_admission_digest": admission.digest,
+        "request_schema": binding.request_schema,
+        "observation_schema": binding.observation_schema,
         "payment_chain_id": config.chain_id,
         "payment_asset_contract": _address(config.asset_contract),
         "payment_recipient": _address(config.recipient),
@@ -146,11 +166,13 @@ class PaidCommercialCoordinator:
         payment_journal: ExecutionJournal,
         live_config: LiveConfig,
         rpc: JsonRpcClient | None = None,
+        provider_registry: ProviderRegistry | None = None,
     ):
         self.commercial_journal = commercial_journal
         self.payment_journal = payment_journal
         self.live_config = live_config.validate()
         self.rpc = rpc or JsonRpcClient(self.live_config.rpc_url)
+        self.provider_registry = provider_registry or ProviderRegistry()
 
     def prepare_wallet(
         self,
@@ -169,7 +191,21 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("commercial-grant-expired")
         validate_reference_payload(grant, payload)
 
-        route = build_reference_paid_route(grant, selected, self.live_config, now=now)
+        route = build_reference_paid_route(
+            grant,
+            selected,
+            self.live_config,
+            self.provider_registry,
+            now=now,
+        )
+        try:
+            provider_binding, provider_admission = self.provider_registry.require(
+                grant.provider_id,
+                grant.capability,
+                now=now,
+            )
+        except ValueError as exc:
+            raise CommercialLiveError(str(exc)) from exc
         if route.payment_amount_atomic != grant.exact_price_atomic:
             raise CommercialLiveError("route-price-binding-mismatch")
         if route.payment_chain_id != self.live_config.chain_id:
@@ -227,6 +263,8 @@ class PaidCommercialCoordinator:
         tx = transaction_request(authority, quote, now=now)
         execution_hio = {
             "provider_id": grant.provider_id,
+            "provider_binding_digest": route.provider_binding_digest,
+            "provider_admission_digest": route.provider_admission_digest,
             "capability": grant.capability,
             "amount_atomic": route.payment_amount_atomic,
             "asset": grant.settlement_asset,
@@ -251,6 +289,8 @@ class PaidCommercialCoordinator:
             "grant_digest": grant.digest,
             "route": asdict(route),
             "route_digest": route.digest,
+            "provider_binding": asdict(provider_binding),
+            "provider_admission": asdict(provider_admission),
             "payload": payload,
             "payload_digest": canonical_hash(payload),
             "intent": asdict(intent),
@@ -308,6 +348,18 @@ class PaidCommercialCoordinator:
         if context.get("execution_approval_digest") != execution_approval_digest:
             raise CommercialLiveError("execution-approval-mismatch")
         route = CapabilityRoute(**context["route"])
+        try:
+            active_binding, active_admission = self.provider_registry.require(
+                route.provider_id,
+                route.capability,
+                now=now,
+            )
+        except ValueError as exc:
+            raise CommercialLiveError(str(exc)) from exc
+        if active_binding.digest != route.provider_binding_digest:
+            raise CommercialLiveError("execution-provider-binding-changed")
+        if active_admission.digest != route.provider_admission_digest:
+            raise CommercialLiveError("execution-provider-admission-changed")
         authority = Authority(**context["authority"])
         quote = Quote(**context["quote"])
         if now > min(route.expires_at, authority.expires_at, quote.expires_at):
@@ -416,6 +468,19 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("payment-route-digest-mismatch")
         if route.offer_digest != selected.digest:
             raise CommercialLiveError("payment-offer-digest-mismatch")
+        try:
+            binding = ProviderBinding(**context["provider_binding"])
+            admission = ProviderAdmission(**context["provider_admission"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CommercialLiveError("payment-provider-snapshot-invalid") from exc
+        if route.provider_binding_digest != binding.digest:
+            raise CommercialLiveError("payment-provider-binding-mismatch")
+        if route.provider_admission_digest != admission.digest:
+            raise CommercialLiveError("payment-provider-admission-mismatch")
+        if admission.binding_digest != binding.digest or admission.decision != "ADMIT":
+            raise CommercialLiveError("payment-provider-admission-invalid")
+        if binding.provider_id != grant.provider_id or binding.capability != grant.capability:
+            raise CommercialLiveError("payment-provider-scope-mismatch")
         if route.provider_id != grant.provider_id or route.capability != grant.capability:
             raise CommercialLiveError("payment-route-scope-mismatch")
         if context.get("payload_digest") != canonical_hash(context.get("payload")):
@@ -495,6 +560,8 @@ class PaidCommercialCoordinator:
             "grant_digest": grant.digest,
             "route_digest": route.digest,
             "provider_id": grant.provider_id,
+            "provider_binding_digest": route.provider_binding_digest,
+            "provider_admission_digest": route.provider_admission_digest,
             "capability": grant.capability,
             "payment_authority_digest": authority.digest,
             "quote_digest": quote.digest,
