@@ -7,7 +7,7 @@ from src.commercial_demo import release_validation_objects
 from src.commercial_execution import CommercialCoordinator, CommercialExecutionJournal
 from src.commercial_x402 import CommercialX402Coordinator, CommercialX402Error, X402ExecutionJournal
 from src.live import LiveConfig
-from src.facilitator_admission import FacilitatorBinding, FacilitatorRegistry, FacilitatorTransportProof
+from src.facilitator_admission import FacilitatorBinding, FacilitatorProbeEvidence, FacilitatorRegistry, FacilitatorTransportProof
 from src.provider_admission import ProviderBinding, ProviderRegistry
 from src.settlement import TRANSFER_TOPIC
 from src.x402 import AUTHORIZATION_USED_TOPIC, EIP3009Authorization, TRANSFER_WITH_AUTHORIZATION_SELECTOR
@@ -90,6 +90,21 @@ def facilitator_registry():
         valid_until=NOW + 3600,
         version=1,
     )
+    evidence = FacilitatorProbeEvidence(
+        facilitator_id=FACILITATOR_ID,
+        verify_url=VERIFY_URL,
+        settle_url=SETTLE_URL,
+        resolved_host="facilitator.example",
+        resolved_addresses=("203.0.113.10",),
+        tls_spki_sha256=TLS_PIN,
+        tls_cert_sha256="sha256:test-cert",
+        tls_subject="CN=facilitator.example",
+        tls_issuer="CN=Test CA",
+        verify_unauthenticated_status=401,
+        settle_unauthenticated_status=401,
+        observer="frequency:test-observer",
+        observed_at=NOW - 30,
+    )
     proof = FacilitatorTransportProof(
         facilitator_id=FACILITATOR_ID,
         verify_url=VERIFY_URL,
@@ -99,11 +114,13 @@ def facilitator_registry():
         verify_behavior="verification-only",
         settle_behavior="settlement-only",
         independent_probe=True,
+        probe_evidence_digest=evidence.digest,
+        observer=evidence.observer,
         observed_at=NOW - 30,
         valid_until=NOW + 600,
     )
     registry = FacilitatorRegistry()
-    assert registry.admit(binding, proof, now=NOW).decision == "ADMIT"
+    assert registry.admit(binding, proof, evidence, now=NOW).decision == "ADMIT"
     return registry
 
 

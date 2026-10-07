@@ -7,7 +7,8 @@ from urllib.parse import urlsplit
 from src.model import canonical_hash
 
 FACILITATOR_BINDING_SCHEMA = "agentpay-facilitator-binding/1"
-FACILITATOR_TRANSPORT_PROOF_SCHEMA = "agentpay-facilitator-transport-proof/1"
+FACILITATOR_TRANSPORT_PROBE_SCHEMA = "agentpay-facilitator-transport-probe/1"
+FACILITATOR_TRANSPORT_PROOF_SCHEMA = "agentpay-facilitator-transport-proof/2"
 FACILITATOR_ADMISSION_SCHEMA = "agentpay-facilitator-admission/1"
 
 
@@ -89,6 +90,46 @@ class FacilitatorBinding:
 
 
 @dataclass(frozen=True)
+class FacilitatorProbeEvidence:
+    facilitator_id: str
+    verify_url: str
+    settle_url: str
+    resolved_host: str
+    resolved_addresses: tuple[str, ...]
+    tls_spki_sha256: str
+    tls_cert_sha256: str
+    tls_subject: str
+    tls_issuer: str
+    verify_unauthenticated_status: int
+    settle_unauthenticated_status: int
+    observer: str
+    observed_at: int
+
+    def __post_init__(self) -> None:
+        _endpoint(self.verify_url, "facilitator-probe-verify-url-invalid")
+        _endpoint(self.settle_url, "facilitator-probe-settle-url-invalid")
+        object.__setattr__(self, "resolved_host", _required(self.resolved_host, "facilitator-probe-host-required").lower())
+        object.__setattr__(self, "resolved_addresses", _clean(self.resolved_addresses))
+        object.__setattr__(self, "tls_spki_sha256", _required(self.tls_spki_sha256, "facilitator-probe-spki-required").lower())
+        object.__setattr__(self, "tls_cert_sha256", _required(self.tls_cert_sha256, "facilitator-probe-cert-required").lower())
+        object.__setattr__(self, "tls_subject", _required(self.tls_subject, "facilitator-probe-subject-required"))
+        object.__setattr__(self, "tls_issuer", _required(self.tls_issuer, "facilitator-probe-issuer-required"))
+        object.__setattr__(self, "observer", _required(self.observer, "facilitator-probe-observer-required"))
+        if not self.resolved_addresses:
+            raise ValueError("facilitator-probe-dns-empty")
+        if self.verify_unauthenticated_status not in {401, 403}:
+            raise ValueError("facilitator-probe-verify-auth-boundary-unproven")
+        if self.settle_unauthenticated_status not in {401, 403}:
+            raise ValueError("facilitator-probe-settle-auth-boundary-unproven")
+        if self.observed_at < 0:
+            raise ValueError("facilitator-probe-time-invalid")
+
+    @property
+    def digest(self) -> str:
+        return canonical_hash({"schema": FACILITATOR_TRANSPORT_PROBE_SCHEMA, **asdict(self)})
+
+
+@dataclass(frozen=True)
 class FacilitatorTransportProof:
     facilitator_id: str
     verify_url: str
@@ -98,6 +139,8 @@ class FacilitatorTransportProof:
     verify_behavior: str
     settle_behavior: str
     independent_probe: bool
+    probe_evidence_digest: str
+    observer: str
     observed_at: int
     valid_until: int
 
@@ -108,6 +151,8 @@ class FacilitatorTransportProof:
         object.__setattr__(self, "tls_spki_sha256", str(self.tls_spki_sha256).strip().lower())
         if not self.resolved_host or not self.tls_spki_sha256:
             raise ValueError("facilitator-proof-transport-identity-missing")
+        object.__setattr__(self, "probe_evidence_digest", _required(self.probe_evidence_digest, "facilitator-proof-evidence-required"))
+        object.__setattr__(self, "observer", _required(self.observer, "facilitator-proof-observer-required"))
         if self.observed_at < 0 or self.valid_until <= self.observed_at:
             raise ValueError("facilitator-proof-validity-invalid")
 
@@ -134,11 +179,25 @@ class FacilitatorAdmission:
 def evaluate_facilitator(
     binding: FacilitatorBinding,
     proof: FacilitatorTransportProof,
+    evidence: FacilitatorProbeEvidence,
     *,
     now: int,
 ) -> FacilitatorAdmission:
     reasons: list[str] = []
     host = urlsplit(binding.verify_url).hostname.lower()
+
+    if proof.probe_evidence_digest != evidence.digest:
+        reasons.append("facilitator-probe-evidence-mismatch")
+    if proof.observer != evidence.observer:
+        reasons.append("facilitator-probe-observer-mismatch")
+    if evidence.facilitator_id != binding.facilitator_id:
+        reasons.append("facilitator-probe-identity-mismatch")
+    if evidence.verify_url != binding.verify_url or evidence.settle_url != binding.settle_url:
+        reasons.append("facilitator-probe-endpoint-mismatch")
+    if evidence.resolved_host != host or evidence.resolved_host not in binding.dns_names:
+        reasons.append("facilitator-probe-dns-mismatch")
+    if evidence.tls_spki_sha256 not in binding.tls_spki_sha256:
+        reasons.append("facilitator-probe-tls-pin-mismatch")
 
     if proof.facilitator_id != binding.facilitator_id:
         reasons.append("facilitator-proof-identity-mismatch")
@@ -176,16 +235,18 @@ class FacilitatorRegistry:
     def __init__(self) -> None:
         self._bindings: dict[str, FacilitatorBinding] = {}
         self._proofs: dict[str, FacilitatorTransportProof] = {}
+        self._evidence: dict[str, FacilitatorProbeEvidence] = {}
         self._admissions: dict[str, FacilitatorAdmission] = {}
 
     def admit(
         self,
         binding: FacilitatorBinding,
         proof: FacilitatorTransportProof,
+        evidence: FacilitatorProbeEvidence,
         *,
         now: int,
     ) -> FacilitatorAdmission:
-        admission = evaluate_facilitator(binding, proof, now=now)
+        admission = evaluate_facilitator(binding, proof, evidence, now=now)
         if admission.decision != "ADMIT":
             return admission
         current = self._bindings.get(binding.facilitator_id)
@@ -193,6 +254,7 @@ class FacilitatorRegistry:
             raise ValueError("facilitator-version-not-monotonic")
         self._bindings[binding.facilitator_id] = binding
         self._proofs[binding.facilitator_id] = proof
+        self._evidence[binding.facilitator_id] = evidence
         self._admissions[binding.facilitator_id] = admission
         return admission
 
@@ -201,6 +263,7 @@ class FacilitatorRegistry:
             raise ValueError("facilitator-not-admitted")
         self._bindings.pop(facilitator_id, None)
         self._proofs.pop(facilitator_id, None)
+        self._evidence.pop(facilitator_id, None)
         self._admissions.pop(facilitator_id, None)
 
     def require(
@@ -214,11 +277,14 @@ class FacilitatorRegistry:
     ) -> tuple[FacilitatorBinding, FacilitatorTransportProof, FacilitatorAdmission]:
         binding = self._bindings.get(facilitator_id)
         proof = self._proofs.get(facilitator_id)
+        evidence = self._evidence.get(facilitator_id)
         admission = self._admissions.get(facilitator_id)
-        if binding is None or proof is None or admission is None or admission.decision != "ADMIT":
+        if binding is None or proof is None or evidence is None or admission is None or admission.decision != "ADMIT":
             raise ValueError("facilitator-not-admitted")
         if admission.binding_digest != binding.digest or admission.transport_proof_digest != proof.digest:
             raise ValueError("facilitator-admission-binding-mismatch")
+        if proof.probe_evidence_digest != evidence.digest:
+            raise ValueError("facilitator-probe-evidence-mismatch")
         if now > admission.valid_until:
             raise ValueError("facilitator-admission-expired")
         if scheme.lower() not in binding.schemes:

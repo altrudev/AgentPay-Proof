@@ -2,6 +2,7 @@ import unittest
 
 from src.facilitator_admission import (
     FacilitatorBinding,
+    FacilitatorProbeEvidence,
     FacilitatorRegistry,
     FacilitatorTransportProof,
 )
@@ -29,6 +30,26 @@ def binding():
     )
 
 
+def evidence(**overrides):
+    values = {
+        "facilitator_id": "facilitator:test",
+        "verify_url": "https://facilitator.example/verify",
+        "settle_url": "https://facilitator.example/settle",
+        "resolved_host": "facilitator.example",
+        "resolved_addresses": ("203.0.113.10",),
+        "tls_spki_sha256": PIN,
+        "tls_cert_sha256": "sha256:test-cert",
+        "tls_subject": "CN=facilitator.example",
+        "tls_issuer": "CN=Test CA",
+        "verify_unauthenticated_status": 401,
+        "settle_unauthenticated_status": 401,
+        "observer": "frequency:test-observer",
+        "observed_at": NOW - 30,
+    }
+    values.update(overrides)
+    return FacilitatorProbeEvidence(**values)
+
+
 def proof(**overrides):
     values = {
         "facilitator_id": "facilitator:test",
@@ -39,6 +60,8 @@ def proof(**overrides):
         "verify_behavior": "verification-only",
         "settle_behavior": "settlement-only",
         "independent_probe": True,
+        "probe_evidence_digest": evidence().digest,
+        "observer": "frequency:test-observer",
         "observed_at": NOW - 30,
         "valid_until": NOW + 600,
     }
@@ -49,7 +72,7 @@ def proof(**overrides):
 class FacilitatorAdmissionTests(unittest.TestCase):
     def test_admits_exact_bound_transport(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(), now=NOW)
+        admission = registry.admit(binding(), proof(), evidence(), now=NOW)
         self.assertEqual(admission.decision, "ADMIT")
         required = registry.require(
             "facilitator:test",
@@ -60,15 +83,22 @@ class FacilitatorAdmissionTests(unittest.TestCase):
         )
         self.assertEqual(required[0].facilitator_id, "facilitator:test")
 
+    def test_probe_evidence_substitution_is_denied(self):
+        registry = FacilitatorRegistry()
+        changed = evidence(resolved_addresses=("203.0.113.11",))
+        admission = registry.admit(binding(), proof(), changed, now=NOW)
+        self.assertEqual(admission.decision, "DENY")
+        self.assertIn("facilitator-probe-evidence-mismatch", admission.reasons)
+
     def test_dns_substitution_is_denied(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(resolved_host="evil.example"), now=NOW)
+        admission = registry.admit(binding(), proof(resolved_host="evil.example"), evidence(), now=NOW)
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-proof-dns-mismatch", admission.reasons)
 
     def test_tls_substitution_is_denied(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(tls_spki_sha256="sha256:other"), now=NOW)
+        admission = registry.admit(binding(), proof(tls_spki_sha256="sha256:other"), evidence(), now=NOW)
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-proof-tls-pin-mismatch", admission.reasons)
 
@@ -77,6 +107,7 @@ class FacilitatorAdmissionTests(unittest.TestCase):
         admission = registry.admit(
             binding(),
             proof(verify_behavior="verification-and-settlement"),
+            evidence(),
             now=NOW,
         )
         self.assertEqual(admission.decision, "DENY")
@@ -84,7 +115,7 @@ class FacilitatorAdmissionTests(unittest.TestCase):
 
     def test_payment_scope_mismatch_fails_closed(self):
         registry = FacilitatorRegistry()
-        self.assertEqual(registry.admit(binding(), proof(), now=NOW).decision, "ADMIT")
+        self.assertEqual(registry.admit(binding(), proof(), evidence(), now=NOW).decision, "ADMIT")
         with self.assertRaisesRegex(ValueError, "facilitator-network-not-admitted"):
             registry.require(
                 "facilitator:test",
