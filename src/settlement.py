@@ -120,7 +120,15 @@ class JsonRpcClient:
         import json
         from urllib.request import Request, urlopen
         payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-        req = Request(self.endpoint, data=payload, headers={"content-type": "application/json"})
+        req = Request(
+            self.endpoint,
+            data=payload,
+            headers={
+                "content-type": "application/json",
+                "accept": "application/json",
+                "user-agent": "AgentPay-Proof/0.1",
+            },
+        )
         with urlopen(req, timeout=self.timeout_seconds) as response:
             body = json.load(response)
         if "error" in body:
