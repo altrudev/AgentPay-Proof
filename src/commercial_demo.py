@@ -10,7 +10,7 @@ from src.commercial import (
 )
 
 
-def release_validation_demo(*, now: int) -> dict:
+def release_validation_objects(*, now: int) -> tuple[CommercialIntentCapsule, tuple[CapabilityOffer, ...]]:
     capsule = CommercialIntentCapsule(
         capsule_id="capsule:release-validation-demo",
         principal_id="principal:demo",
@@ -21,7 +21,7 @@ def release_validation_demo(*, now: int) -> dict:
         allowed_capabilities=("local.visual.compare", "browser.render.verify"),
         allowed_disclosures=("rendered_page",),
         prohibited_disclosures=("repository_source", "private_messages", "credentials"),
-        minimum_evidence=("signed_execution_receipt", "visual_diff"),
+        minimum_evidence=("execution_receipt", "visual_diff"),
         minimum_confidence_bps=9_500,
         maximum_credential_ttl_seconds=300,
         maximum_compute_units=20,
@@ -40,7 +40,7 @@ def release_validation_demo(*, now: int) -> dict:
             price_atomic=0,
             settlement_asset="USDC",
             required_disclosures=(),
-            evidence=("signed_execution_receipt", "visual_diff"),
+            evidence=("execution_receipt", "visual_diff"),
             expected_confidence_bps=8_800,
             credential_ttl_seconds=0,
             compute_units=3,
@@ -56,7 +56,7 @@ def release_validation_demo(*, now: int) -> dict:
             price_atomic=10_000,
             settlement_asset="USDC",
             required_disclosures=("repository_source",),
-            evidence=("signed_execution_receipt", "visual_diff"),
+            evidence=("execution_receipt", "visual_diff"),
             expected_confidence_bps=9_900,
             credential_ttl_seconds=120,
             compute_units=5,
@@ -72,7 +72,7 @@ def release_validation_demo(*, now: int) -> dict:
             price_atomic=30_000,
             settlement_asset="USDC",
             required_disclosures=("rendered_page",),
-            evidence=("signed_execution_receipt", "visual_diff"),
+            evidence=("execution_receipt", "visual_diff"),
             expected_confidence_bps=9_700,
             credential_ttl_seconds=120,
             compute_units=5,
@@ -88,7 +88,7 @@ def release_validation_demo(*, now: int) -> dict:
             price_atomic=80_000,
             settlement_asset="USDC",
             required_disclosures=("rendered_page",),
-            evidence=("signed_execution_receipt", "visual_diff"),
+            evidence=("execution_receipt", "visual_diff"),
             expected_confidence_bps=9_700,
             credential_ttl_seconds=120,
             compute_units=7,
@@ -99,6 +99,11 @@ def release_validation_demo(*, now: int) -> dict:
         ),
     )
 
+    return capsule, offers
+
+
+def release_validation_demo(*, now: int) -> dict:
+    capsule, offers = release_validation_objects(now=now)
     plan = plan_commercial_action(capsule, offers, now=now)
     return {
         "schema": "agentpay-commercial-demo/1",

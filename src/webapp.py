@@ -8,7 +8,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from src.live import LiveConfig, LiveCoordinator, LivePaymentError
-from src.commercial_demo import release_validation_demo
+from src.commercial_demo import release_validation_demo, release_validation_objects
+from src.commercial_execution import (
+    CommercialCoordinator,
+    CommercialExecutionError,
+    CommercialExecutionJournal,
+)
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
@@ -46,6 +51,15 @@ def live_coordinator() -> LiveCoordinator:
         raise LivePaymentError("live-mode-not-configured")
     Path(config.journal_path).parent.mkdir(parents=True, exist_ok=True)
     return LiveCoordinator(config)
+
+
+def commercial_coordinator() -> CommercialCoordinator:
+    path = os.environ.get(
+        "AGENTPAY_COMMERCIAL_STATE_DB",
+        "agentpay-state/commercial.sqlite3",
+    )
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    return CommercialCoordinator(CommercialExecutionJournal(path))
 
 
 class DemoSettlementProvider:
@@ -113,6 +127,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, catalog_document())
         if path == "/api/commercial/demo":
             return self._json(200, release_validation_demo(now=int(time.time())))
+        if path == "/api/commercial/prepare-demo":
+            now = int(time.time())
+            capsule, offers = release_validation_objects(now=now)
+            return self._json(200, commercial_coordinator().prepare(capsule, offers, now=now))
         if path == "/api/discovery":
             query = parse_qs(parsed.query)
             service_id = str(query.get("service_id", ["code-analysis-v1"])[0])
@@ -234,6 +252,22 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(proof, dict):
                     return self._json(400, {"error": "proof-required"})
                 return self._json(200, tamper_demo(proof))
+            if path == "/api/commercial/execute-demo":
+                grant_id = str(payload.get("grant_id", ""))
+                approval_digest = str(payload.get("approval_digest", ""))
+                rendered_page_digest = str(payload.get("rendered_page_digest", ""))
+                reference_digest = str(payload.get("reference_digest", ""))
+                if not all((grant_id, approval_digest, rendered_page_digest, reference_digest)):
+                    return self._json(400, {"error": "commercial-execution-fields-required"})
+                return self._json(200, commercial_coordinator().approve_and_execute_reference(
+                    grant_id,
+                    approval_digest=approval_digest,
+                    payload={
+                        "rendered_page_digest": rendered_page_digest,
+                        "reference_digest": reference_digest,
+                    },
+                    now=int(time.time()),
+                ))
             if path == "/api/live/prepare":
                 raw_amount = payload.get("amount_atomic")
                 amount = None if raw_amount in (None, "") else int(raw_amount)
@@ -281,7 +315,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise
                 return self._json(200, result)
             return self._json(404, {"error": "not-found"})
-        except (LivePaymentError, ExecutionStateError) as exc:
+        except (LivePaymentError, ExecutionStateError, CommercialExecutionError) as exc:
             return self._json(409, {"error": str(exc)})
         except (ValueError, TypeError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid-request"})
