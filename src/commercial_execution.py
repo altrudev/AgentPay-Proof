@@ -680,7 +680,10 @@ def reconstruct_commercial_context(
     if grant.grant_id != grant_id:
         raise CommercialExecutionError("commercial-grant-reconstruction-mismatch")
     persisted_grant = data.get("grant")
-    if not isinstance(persisted_grant, dict) or persisted_grant != asdict(grant):
+    if (
+        not isinstance(persisted_grant, dict)
+        or canonical_hash(persisted_grant) != canonical_hash(asdict(grant))
+    ):
         raise CommercialExecutionError("commercial-grant-context-mismatch")
     explanation = data.get("explanation")
     if not isinstance(explanation, dict):
