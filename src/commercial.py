@@ -419,3 +419,41 @@ def make_commercial_proof(
     }
     body["commercial_proof_hash"] = canonical_hash(body)
     return body
+
+
+def verify_commercial_proof(proof: dict) -> dict:
+    errors: list[str] = []
+    if not isinstance(proof, dict):
+        return {"verdict": "NOT VERIFIED", "errors": ["proof-invalid"]}
+    if proof.get("schema") != PROOF_SCHEMA:
+        errors.append("schema-invalid")
+
+    for field in (
+        "capsule_digest",
+        "plan_digest",
+        "selected_offer_id",
+        "selected_offer_digest",
+        "authority_digest",
+        "action_proof_hash",
+        "outcome",
+    ):
+        value = proof.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{field}-invalid")
+
+    observed_at = proof.get("observed_at")
+    if not isinstance(observed_at, int) or observed_at < 0:
+        errors.append("observed-at-invalid")
+
+    supplied_hash = proof.get("commercial_proof_hash")
+    if not isinstance(supplied_hash, str) or not supplied_hash:
+        errors.append("commercial-proof-hash-invalid")
+    else:
+        body = {k: v for k, v in proof.items() if k != "commercial_proof_hash"}
+        if canonical_hash(body) != supplied_hash:
+            errors.append("commercial-proof-hash-mismatch")
+
+    return {
+        "verdict": "VERIFIED" if not errors else "NOT VERIFIED",
+        "errors": errors,
+    }
