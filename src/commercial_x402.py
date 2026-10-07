@@ -65,6 +65,8 @@ class X402ExecutionRecord:
     state: str
     nonce: str
     transaction_hash: str | None
+    signed_evidence_digest: str | None
+    resource_result_digest: str | None
 
 
 class X402ExecutionJournal:
@@ -89,10 +91,17 @@ class X402ExecutionJournal:
                     nonce TEXT NOT NULL UNIQUE,
                     approval_digest TEXT NOT NULL,
                     context_json TEXT NOT NULL,
-                    transaction_hash TEXT
+                    transaction_hash TEXT,
+                    signed_evidence_digest TEXT,
+                    resource_result_digest TEXT
                 )
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(x402_executions)")}
+            if "signed_evidence_digest" not in columns:
+                conn.execute("ALTER TABLE x402_executions ADD COLUMN signed_evidence_digest TEXT")
+            if "resource_result_digest" not in columns:
+                conn.execute("ALTER TABLE x402_executions ADD COLUMN resource_result_digest TEXT")
 
     def reserve(
         self,
@@ -128,7 +137,7 @@ class X402ExecutionJournal:
     def get(self, execution_id: str) -> X402ExecutionRecord:
         with closing(self._connect()) as conn, conn:
             row = conn.execute(
-                "SELECT execution_id,grant_id,state,nonce,transaction_hash FROM x402_executions WHERE execution_id=?",
+                "SELECT execution_id,grant_id,state,nonce,transaction_hash,signed_evidence_digest,resource_result_digest FROM x402_executions WHERE execution_id=?",
                 (execution_id,),
             ).fetchone()
         if row is None:
@@ -138,7 +147,7 @@ class X402ExecutionJournal:
     def get_by_grant(self, grant_id: str) -> X402ExecutionRecord | None:
         with closing(self._connect()) as conn, conn:
             row = conn.execute(
-                "SELECT execution_id,grant_id,state,nonce,transaction_hash FROM x402_executions WHERE grant_id=?",
+                "SELECT execution_id,grant_id,state,nonce,transaction_hash,signed_evidence_digest,resource_result_digest FROM x402_executions WHERE grant_id=?",
                 (grant_id,),
             ).fetchone()
         return X402ExecutionRecord(**dict(row)) if row is not None else None
@@ -162,6 +171,60 @@ class X402ExecutionJournal:
             ).rowcount
         if changed != 1:
             raise CommercialX402Error("x402-context-update-failed")
+
+    def bind_signed_context(
+        self,
+        execution_id: str,
+        *,
+        context: dict[str, Any],
+        signed_evidence_digest: str,
+    ) -> X402ExecutionRecord:
+        current = self.get(execution_id)
+        if current.state != "SIGNING":
+            raise CommercialX402Error(f"x402-signed-bind-not-allowed:{current.state}")
+        if current.signed_evidence_digest is not None:
+            if current.signed_evidence_digest != signed_evidence_digest:
+                raise CommercialX402Error("x402-signed-evidence-substitution")
+            if self.context(execution_id) != context:
+                raise CommercialX402Error("x402-signed-context-substitution")
+            return current
+        payload = json.dumps(context, sort_keys=True, separators=(",", ":"))
+        with closing(self._connect()) as conn, conn:
+            changed = conn.execute(
+                "UPDATE x402_executions SET context_json=?, signed_evidence_digest=? "
+                "WHERE execution_id=? AND state='SIGNING' AND signed_evidence_digest IS NULL",
+                (payload, signed_evidence_digest, execution_id),
+            ).rowcount
+        if changed != 1:
+            raise CommercialX402Error("x402-signed-bind-race")
+        return self.get(execution_id)
+
+    def bind_resource_context(
+        self,
+        execution_id: str,
+        *,
+        context: dict[str, Any],
+        resource_result_digest: str,
+    ) -> X402ExecutionRecord:
+        current = self.get(execution_id)
+        if current.state != "RESOURCE_DISPATCHED":
+            raise CommercialX402Error(f"x402-resource-bind-not-allowed:{current.state}")
+        if current.resource_result_digest is not None:
+            if current.resource_result_digest != resource_result_digest:
+                raise CommercialX402Error("x402-resource-result-substitution")
+            if self.context(execution_id) != context:
+                raise CommercialX402Error("x402-resource-context-substitution")
+            return current
+        payload = json.dumps(context, sort_keys=True, separators=(",", ":"))
+        with closing(self._connect()) as conn, conn:
+            changed = conn.execute(
+                "UPDATE x402_executions SET context_json=?, resource_result_digest=? "
+                "WHERE execution_id=? AND state='RESOURCE_DISPATCHED' AND resource_result_digest IS NULL",
+                (payload, resource_result_digest, execution_id),
+            ).rowcount
+        if changed != 1:
+            raise CommercialX402Error("x402-resource-bind-race")
+        return self.get(execution_id)
 
     def approval_digest(self, execution_id: str) -> str:
         with closing(self._connect()) as conn, conn:
@@ -239,6 +302,11 @@ class CommercialX402Coordinator:
             raise CommercialX402Error("x402-authorization-context-mismatch")
         if context.get("capability_payload_digest") != canonical_hash(context.get("capability_payload")):
             raise CommercialX402Error("x402-capability-payload-context-mismatch")
+        payment_required = context.get("payment_required")
+        if not isinstance(payment_required, dict):
+            raise CommercialX402Error("x402-payment-required-context-missing")
+        if context.get("payment_required_digest") != canonical_hash(payment_required):
+            raise CommercialX402Error("x402-payment-required-context-mismatch")
         if binding.digest != route.provider_binding_digest:
             raise CommercialX402Error("x402-provider-binding-context-mismatch")
         if admission.digest != route.provider_admission_digest or admission.binding_digest != binding.digest:
@@ -260,12 +328,33 @@ class CommercialX402Coordinator:
             "requirement_digest": requirement.digest,
             "authorization_digest": authorization.digest,
             "capability_payload_digest": context.get("capability_payload_digest"),
+            "payment_required_digest": context.get("payment_required_digest"),
             "hio": context.get("hio"),
         })
         if context.get("execution_approval_digest") != expected_approval:
             raise CommercialX402Error("x402-execution-approval-context-mismatch")
         if self.x402_journal.approval_digest(execution_id) != expected_approval:
             raise CommercialX402Error("x402-journal-approval-context-mismatch")
+        record = self.x402_journal.get(execution_id)
+        if record.signed_evidence_digest is not None:
+            payment_payload_value = context.get("payment_payload")
+            verify_response = context.get("verify_response")
+            if not isinstance(payment_payload_value, dict) or not isinstance(verify_response, dict):
+                raise CommercialX402Error("x402-signed-evidence-context-missing")
+            signed_digest = canonical_hash({
+                "payment_payload": payment_payload_value,
+                "verify_response": verify_response,
+            })
+            if signed_digest != record.signed_evidence_digest:
+                raise CommercialX402Error("x402-signed-evidence-context-mismatch")
+        if record.resource_result_digest is not None:
+            resource_digest = canonical_hash({
+                "dispatch_id": context.get("dispatch_id"),
+                "artifact": context.get("artifact"),
+                "reference_action_receipt": context.get("reference_action_receipt"),
+            })
+            if resource_digest != record.resource_result_digest:
+                raise CommercialX402Error("x402-resource-result-context-mismatch")
         return route, requirement, authorization
 
     def _route_and_requirement(
@@ -390,6 +479,7 @@ class CommercialX402Coordinator:
             "requirement_digest": requirement.digest,
             "authorization_digest": authorization.digest,
             "capability_payload_digest": canonical_hash(capability_payload),
+            "payment_required_digest": canonical_hash(payment_required),
             "hio": hio,
         })
         input_binding_digest = canonical_hash({
@@ -409,6 +499,8 @@ class CommercialX402Coordinator:
             "authorization_digest": authorization.digest,
             "capability_payload": capability_payload,
             "capability_payload_digest": canonical_hash(capability_payload),
+            "payment_required": payment_required,
+            "payment_required_digest": canonical_hash(payment_required),
             "commercial_approval_digest": commercial_approval_digest,
             "execution_approval_digest": execution_approval_digest,
             "input_binding_digest": input_binding_digest,
@@ -498,7 +590,13 @@ class CommercialX402Coordinator:
             raise CommercialX402Error("x402-provider-admission-changed")
         try:
             signature = validate_signature(signature)
-            payload = payment_payload(requirement, authorization, signature)
+            payment_required = context["payment_required"]
+            resource = payment_required.get("resource")
+            extensions = payment_required.get("extensions", {})
+            payload = payment_payload(
+                requirement, authorization, signature,
+                resource=resource, extensions=extensions,
+            )
         except X402Error as exc:
             raise CommercialX402Error(str(exc)) from exc
         if now <= authorization.valid_after or now >= authorization.valid_before:
@@ -511,6 +609,17 @@ class CommercialX402Coordinator:
             raise CommercialX402Error(str(exc)) from exc
         except Exception as exc:
             raise CommercialX402Error("x402-facilitator-verify-unavailable") from exc
+        context["payment_payload"] = payload
+        context["verify_response"] = verified
+        context["payment_payload_digest"] = canonical_hash(payload)
+        context["verify_response_digest"] = canonical_hash(verified)
+        signed_evidence_digest = canonical_hash({
+            "payment_payload": payload,
+            "verify_response": verified,
+        })
+        self.x402_journal.bind_signed_context(
+            execution_id, context=context, signed_evidence_digest=signed_evidence_digest
+        )
         self.x402_journal.transition(execution_id, "VERIFIED")
 
         capsule, offers, plan, selected, grant, explanation = reconstruct_commercial_context(
@@ -534,13 +643,18 @@ class CommercialX402Coordinator:
             if commercial.state == "APPROVED":
                 self.commercial_journal.mark_in_doubt(record.grant_id)
             raise CommercialX402Error("x402-resource-execution-in-doubt") from exc
-        self.x402_journal.transition(execution_id, "RESOURCE_EXECUTED")
-        context["payment_payload"] = payload
-        context["verify_response"] = verified
         context["dispatch_id"] = dispatch_id
         context["artifact"] = reference.artifact
         context["reference_action_receipt"] = reference.action_receipt
-        self.x402_journal.replace_context(execution_id, context)
+        resource_result_digest = canonical_hash({
+            "dispatch_id": dispatch_id,
+            "artifact": reference.artifact,
+            "reference_action_receipt": reference.action_receipt,
+        })
+        self.x402_journal.bind_resource_context(
+            execution_id, context=context, resource_result_digest=resource_result_digest
+        )
+        self.x402_journal.transition(execution_id, "RESOURCE_EXECUTED")
 
         self.x402_journal.transition(execution_id, "SETTLEMENT_PENDING")
         try:
@@ -633,6 +747,9 @@ class CommercialX402Coordinator:
             "x402_requirement_digest": requirement.digest,
             "eip3009_authorization_digest": authorization.digest,
             "eip3009_nonce": authorization.nonce,
+            "payment_payload_digest": context.get("payment_payload_digest"),
+            "facilitator_verify_digest": context.get("verify_response_digest"),
+            "resource_result_digest": self.x402_journal.get(execution_id).resource_result_digest,
             "settlement_digest": settlement.digest,
             "artifact_digest": canonical_hash(reference.artifact),
             "execution_receipt_digest": canonical_hash(reference.action_receipt),

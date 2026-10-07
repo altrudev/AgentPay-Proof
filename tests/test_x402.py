@@ -2,6 +2,7 @@ import json
 import unittest
 
 from src.x402 import (
+    TRANSFER_WITH_AUTHORIZATION_SELECTOR,
     EIP3009Authorization,
     X402Error,
     X402Requirement,
@@ -47,22 +48,45 @@ def required(amount="30000", resource=RESOURCE, payee=PAYEE):
     }
 
 
+def transfer_with_authorization_input(authorization):
+    def address_word(value):
+        return value[2:].lower().rjust(64, "0")
+    def int_word(value):
+        return hex(int(value))[2:].rjust(64, "0")
+    return TRANSFER_WITH_AUTHORIZATION_SELECTOR + "".join((
+        address_word(authorization.from_address),
+        address_word(authorization.to),
+        int_word(authorization.value),
+        int_word(authorization.valid_after),
+        int_word(authorization.valid_before),
+        authorization.nonce[2:].lower(),
+        int_word(27),
+        "11" * 32,
+        "22" * 32,
+    ))
+
+
 def topic_address(address):
     return "0x" + address[2:].lower().rjust(64, "0")
 
 
 class FakeRpc:
-    def __init__(self, authorization, requirement, *, omit_auth=False, omit_transfer=False):
+    def __init__(self, authorization, requirement, *, omit_auth=False, omit_transfer=False, input_override=None):
         self.authorization = authorization
         self.requirement = requirement
         self.omit_auth = omit_auth
         self.omit_transfer = omit_transfer
+        self.input_override = input_override
 
     def call(self, method, params):
         if method == "eth_chainId":
             return hex(8453)
         if method == "eth_getTransactionByHash":
-            return {"hash": TX, "to": TOKEN, "from": "0x0000000000000000000000000000000000001111"}
+            return {
+                "hash": TX, "to": TOKEN,
+                "from": "0x0000000000000000000000000000000000001111",
+                "input": self.input_override or transfer_with_authorization_input(self.authorization),
+            }
         if method == "eth_getTransactionReceipt":
             logs = []
             if not self.omit_auth:
@@ -148,6 +172,54 @@ class X402Tests(unittest.TestCase):
             observe_eip3009_settlement(FakeRpc(self.authorization, self.requirement, omit_auth=True), TX, self.requirement, self.authorization)
         with self.assertRaisesRegex(SettlementError, "x402-matching-transfer-log-not-found"):
             observe_eip3009_settlement(FakeRpc(self.authorization, self.requirement, omit_transfer=True), TX, self.requirement, self.authorization)
+
+    def test_payment_payload_preserves_resource_metadata_and_extensions(self):
+        signature = "0x" + "11" * 65
+        resource = {
+            "url": RESOURCE,
+            "description": "render verify",
+            "mimeType": "application/json",
+            "serviceName": "Bounded Verify",
+        }
+        extensions = {
+            "com.example.policy": {
+                "info": {"purpose": "release-validation"},
+                "schema": {"type": "object"},
+            }
+        }
+        payload = payment_payload(
+            self.requirement, self.authorization, signature,
+            resource=resource, extensions=extensions,
+        )
+        self.assertEqual(payload["resource"], resource)
+        self.assertEqual(payload["extensions"], extensions)
+
+    def test_unknown_requirement_semantics_fail_closed(self):
+        tampered = required()
+        tampered["accepts"][0]["extra"]["futureSettlementMode"] = "magic"
+        with self.assertRaisesRegex(X402Error, "x402-exact-requirement-not-unique"):
+            select_exact_eip3009_requirement(
+                tampered, resource_url=RESOURCE, chain_id=8453,
+                asset=TOKEN, pay_to=PAYEE, amount=30000,
+            )
+
+    def test_observer_binds_full_authorization_calldata(self):
+        altered = EIP3009Authorization(
+            from_address=self.authorization.from_address,
+            to=self.authorization.to,
+            value=self.authorization.value,
+            valid_after=self.authorization.valid_after,
+            valid_before=self.authorization.valid_before + 1,
+            nonce=self.authorization.nonce,
+        )
+        with self.assertRaisesRegex(SettlementError, "x402-authorization-calldata-mismatch"):
+            observe_eip3009_settlement(
+                FakeRpc(
+                    self.authorization, self.requirement,
+                    input_override=transfer_with_authorization_input(altered),
+                ),
+                TX, self.requirement, self.authorization,
+            )
 
 
 if __name__ == "__main__":

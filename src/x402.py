@@ -17,6 +17,7 @@ BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 BASE_USDC_EIP712_NAME = "USD Coin"
 BASE_USDC_EIP712_VERSION = "2"
 AUTHORIZATION_USED_TOPIC = "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5"
+TRANSFER_WITH_AUTHORIZATION_SELECTOR = "0xe3ee160e"
 
 
 class X402Error(ValueError):
@@ -154,6 +155,10 @@ def select_exact_eip3009_requirement(
 ) -> X402Requirement:
     if not isinstance(payment_required, dict) or payment_required.get("x402Version") != X402_VERSION:
         raise X402Error("x402-version-invalid")
+    if set(payment_required) - {"x402Version", "error", "resource", "accepts", "extensions"}:
+        raise X402Error("x402-payment-required-fields-unsupported")
+    if "extensions" in payment_required and not isinstance(payment_required.get("extensions"), dict):
+        raise X402Error("x402-extensions-invalid")
     resource = payment_required.get("resource")
     if not isinstance(resource, dict) or resource.get("url") != resource_url:
         raise X402Error("x402-resource-binding-mismatch")
@@ -168,7 +173,11 @@ def select_exact_eip3009_requirement(
     for item in accepts:
         if not isinstance(item, dict):
             continue
+        if set(item) - {"scheme", "network", "amount", "asset", "payTo", "maxTimeoutSeconds", "extra"}:
+            continue
         extra = item.get("extra") if isinstance(item.get("extra"), dict) else {}
+        if set(extra) - {"assetTransferMethod", "paymentFlow", "name", "version"}:
+            continue
         method = extra.get("assetTransferMethod", X402_EIP3009)
         flow = extra.get("paymentFlow", X402_AUTHORIZATION_FLOW)
         try:
@@ -279,17 +288,27 @@ def payment_payload(
     requirement: X402Requirement,
     authorization: EIP3009Authorization,
     signature: str,
+    *,
+    resource: dict[str, Any] | None = None,
+    extensions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     signature = validate_signature(signature)
+    resource = dict(resource or {"url": requirement.resource_url})
+    if resource.get("url") != requirement.resource_url:
+        raise X402Error("x402-payload-resource-mismatch")
+    if extensions is None:
+        extensions = {}
+    if not isinstance(extensions, dict):
+        raise X402Error("x402-extensions-invalid")
     return {
         "x402Version": X402_VERSION,
-        "resource": {"url": requirement.resource_url},
+        "resource": resource,
         "accepted": requirement.wire(),
         "payload": {
             "signature": signature,
             "authorization": authorization.wire(),
         },
-        "extensions": {},
+        "extensions": dict(extensions),
     }
 
 
@@ -325,6 +344,30 @@ def settlement_transaction(response: dict[str, Any], *, payer: str, network: str
     return tx
 
 
+def decode_transfer_with_authorization_calldata(input_data: str) -> dict[str, Any]:
+    value = str(input_data).strip().lower()
+    if not value.startswith(TRANSFER_WITH_AUTHORIZATION_SELECTOR):
+        raise SettlementError("x402-transfer-with-authorization-selector-mismatch")
+    encoded = value[10:]
+    if len(encoded) != 9 * 64:
+        raise SettlementError("x402-transfer-with-authorization-calldata-length")
+    try:
+        slots = [encoded[i:i + 64] for i in range(0, len(encoded), 64)]
+        return {
+            "from": _address("0x" + slots[0][-40:]),
+            "to": _address("0x" + slots[1][-40:]),
+            "value": int(slots[2], 16),
+            "validAfter": int(slots[3], 16),
+            "validBefore": int(slots[4], 16),
+            "nonce": _bytes32("0x" + slots[5]),
+            "v": int(slots[6], 16),
+            "r": _bytes32("0x" + slots[7]),
+            "s": _bytes32("0x" + slots[8]),
+        }
+    except (ValueError, X402Error) as exc:
+        raise SettlementError("x402-transfer-with-authorization-calldata-invalid") from exc
+
+
 def observe_eip3009_settlement(
     rpc: JsonRpcClient,
     tx_hash: str,
@@ -342,6 +385,16 @@ def observe_eip3009_settlement(
         raise SettlementError("x402-transaction-not-successful")
     if _address(tx.get("to", "")) != requirement.asset:
         raise SettlementError("x402-token-contract-mismatch")
+    decoded = decode_transfer_with_authorization_calldata(tx.get("input", ""))
+    if (
+        decoded["from"] != authorization.from_address
+        or decoded["to"] != authorization.to
+        or decoded["value"] != authorization.value
+        or decoded["validAfter"] != authorization.valid_after
+        or decoded["validBefore"] != authorization.valid_before
+        or decoded["nonce"] != authorization.nonce
+    ):
+        raise SettlementError("x402-authorization-calldata-mismatch")
 
     auth_used = False
     transfer_seen = False

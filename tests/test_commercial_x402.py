@@ -9,7 +9,7 @@ from src.commercial_x402 import CommercialX402Coordinator, CommercialX402Error, 
 from src.live import LiveConfig
 from src.provider_admission import ProviderBinding, ProviderRegistry
 from src.settlement import TRANSFER_TOPIC
-from src.x402 import AUTHORIZATION_USED_TOPIC
+from src.x402 import AUTHORIZATION_USED_TOPIC, EIP3009Authorization, TRANSFER_WITH_AUTHORIZATION_SELECTOR
 
 TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 PAYEE = "0x000000000000000000000000000000000000beef"
@@ -18,6 +18,24 @@ RESOURCE = "https://provider.example/v1/render-verify"
 NOW = 1_800_000_000
 TX = "0x" + "12" * 32
 SIG = "0x" + "11" * 65
+
+
+def transfer_with_authorization_input(authorization):
+    def address_word(value):
+        return value[2:].lower().rjust(64, "0")
+    def int_word(value):
+        return hex(int(value))[2:].rjust(64, "0")
+    return TRANSFER_WITH_AUTHORIZATION_SELECTOR + "".join((
+        address_word(authorization.from_address),
+        address_word(authorization.to),
+        int_word(authorization.value),
+        int_word(authorization.valid_after),
+        int_word(authorization.valid_before),
+        authorization.nonce[2:].lower(),
+        int_word(27),
+        "11" * 32,
+        "22" * 32,
+    ))
 
 
 def topic_address(address):
@@ -51,8 +69,8 @@ def provider_registry():
     return registry
 
 
-def payment_required(amount="30000"):
-    return {
+def payment_required(amount="30000", extensions=None):
+    document = {
         "x402Version": 2,
         "resource": {"url": RESOURCE, "description": "render verify", "mimeType": "application/json"},
         "accepts": [{
@@ -70,6 +88,9 @@ def payment_required(amount="30000"):
             },
         }],
     }
+    if extensions is not None:
+        document["extensions"] = extensions
+    return document
 
 
 class FakeFacilitator:
@@ -77,9 +98,11 @@ class FakeFacilitator:
         self.verify_valid = verify_valid
         self.settle_mode = settle_mode
         self.calls = []
+        self.last_verify_payload = None
 
     def verify(self, payload, requirement):
         self.calls.append("verify")
+        self.last_verify_payload = payload
         if self.verify_valid:
             return {"isValid": True, "payer": PAYER}
         return {"isValid": False, "invalidReason": "invalid_exact_evm_payload_signature", "payer": PAYER}
@@ -102,7 +125,13 @@ class FakeRpc:
         if method == "eth_chainId":
             return hex(8453)
         if method == "eth_getTransactionByHash":
-            return {"hash": TX, "to": TOKEN, "from": "0x0000000000000000000000000000000000001111"}
+            authorization = EIP3009Authorization(**self.journal.context(self.execution_id)["authorization"])
+            return {
+                "hash": TX,
+                "to": TOKEN,
+                "from": "0x0000000000000000000000000000000000001111",
+                "input": transfer_with_authorization_input(authorization),
+            }
         if method == "eth_getTransactionReceipt":
             nonce = self.journal.context(self.execution_id)["authorization"]["nonce"]
             return {
@@ -305,6 +334,72 @@ class CommercialX402Tests(unittest.TestCase):
                 now=NOW + 1,
             )
         self.assertIsNone(self.x402_journal.get_by_grant(self.prepared["grant"]["grant_id"]))
+
+    def test_signed_and_resource_evidence_are_write_once_anchors(self):
+        facilitator = FakeFacilitator(settle_mode="pending")
+        coordinator, _ = self.coordinator(facilitator)
+        out = self.prepare_x402(coordinator)
+        execution_id = out["execution_id"]
+        coordinator.confirm(
+            execution_id, execution_approval_digest=out["execution_approval_digest"], now=NOW + 2
+        )
+        pending = coordinator.submit_signature_and_execute(execution_id, signature=SIG, now=NOW + 3)
+        self.assertEqual(pending["status"], "IN_DOUBT")
+        record = self.x402_journal.get(execution_id)
+        self.assertTrue(record.signed_evidence_digest)
+        self.assertTrue(record.resource_result_digest)
+
+        context = self.x402_journal.context(execution_id)
+        context["payment_payload"]["payload"]["signature"] = "0x" + "22" * 65
+        self.x402_journal.replace_context(execution_id, context)
+        coordinator.rpc = FakeRpc(self.x402_journal, execution_id)
+        with self.assertRaisesRegex(CommercialX402Error, "x402-signed-evidence-context-mismatch"):
+            coordinator.reconcile(execution_id, now=NOW + 4)
+
+    def test_resource_result_tamper_is_detected_before_reconciliation(self):
+        facilitator = FakeFacilitator(settle_mode="pending")
+        coordinator, _ = self.coordinator(facilitator)
+        out = self.prepare_x402(coordinator)
+        execution_id = out["execution_id"]
+        coordinator.confirm(
+            execution_id, execution_approval_digest=out["execution_approval_digest"], now=NOW + 2
+        )
+        coordinator.submit_signature_and_execute(execution_id, signature=SIG, now=NOW + 3)
+        context = self.x402_journal.context(execution_id)
+        context["artifact"]["confidence_bps"] = 9999
+        self.x402_journal.replace_context(execution_id, context)
+        coordinator.rpc = FakeRpc(self.x402_journal, execution_id)
+        with self.assertRaisesRegex(CommercialX402Error, "x402-resource-result-context-mismatch"):
+            coordinator.reconcile(execution_id, now=NOW + 4)
+
+    def test_payment_required_extensions_are_approved_and_echoed(self):
+        extensions = {
+            "com.example.policy": {
+                "info": {"purpose": "release-validation"},
+                "schema": {"type": "object"},
+            }
+        }
+        facilitator = FakeFacilitator(verify_valid=False)
+        coordinator, _ = self.coordinator(facilitator)
+        prepared = coordinator.prepare(
+            self.prepared["grant"]["grant_id"],
+            commercial_approval_digest=self.prepared["approval_digest"],
+            capability_payload=self.capability_payload,
+            payment_required=payment_required(extensions=extensions),
+            payer=PAYER, now=NOW + 1,
+        )
+        coordinator.confirm(
+            prepared["execution_id"],
+            execution_approval_digest=prepared["execution_approval_digest"],
+            now=NOW + 2,
+        )
+        with self.assertRaisesRegex(CommercialX402Error, "x402-facilitator-verification-failed"):
+            coordinator.submit_signature_and_execute(prepared["execution_id"], signature=SIG, now=NOW + 3)
+        self.assertEqual(facilitator.last_verify_payload["extensions"], extensions)
+        self.assertEqual(
+            facilitator.last_verify_payload["resource"]["description"],
+            "render verify",
+        )
 
 
 if __name__ == "__main__":
