@@ -5,7 +5,7 @@ import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from src.live import LiveConfig, LiveCoordinator, LivePaymentError
 from src.execution import ExecutionStateError
@@ -98,7 +98,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/api/health":
             config = live_config()
             return self._json(200, {
@@ -110,8 +111,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/catalog":
             return self._json(200, catalog_document())
         if path == "/api/discovery":
-            service_id = "code-analysis-v1"
+            query = parse_qs(parsed.query)
+            service_id = str(query.get("service_id", ["code-analysis-v1"])[0])
             try:
+                service_id = resolve_service_id(service_id)
                 return self._json(200, discovery_document(service_id))
             except ValueError:
                 return self._json(404, {"error": "service-not-found"})
