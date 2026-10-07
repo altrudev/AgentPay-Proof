@@ -188,6 +188,47 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
         self.assertEqual(confirmed["wallet_request"]["to"], TOKEN)
         self.assertEqual(self.commercial_journal.get(self.grant_id).state, "APPROVED")
 
+    def test_provider_revocation_before_wallet_release_blocks_dispatch(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        self.registry.revoke("provider:render-only")
+        with self.assertRaisesRegex(CommercialLiveError, "provider-not-admitted"):
+            self.paid.confirm_wallet(
+                self.grant_id,
+                out["payment_decision_id"],
+                execution_approval_digest=out["execution_approval_digest"],
+                now=NOW + 1,
+            )
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
+
+    def test_provider_revocation_after_wallet_release_does_not_strand_reconciliation(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        self.paid.confirm_wallet(
+            self.grant_id,
+            out["payment_decision_id"],
+            execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
+        )
+        self.registry.revoke("provider:render-only")
+        result = self.paid.reconcile(
+            self.grant_id,
+            out["payment_decision_id"],
+            "0xabc123456789",
+            SENDER,
+            now=NOW + 2,
+        )
+        self.assertEqual(result["status"], "VERIFIED")
+        self.assertEqual(result["commercial_state"], "CONSUMED")
+
     def test_wrong_execution_approval_never_releases_wallet_request(self):
         out = self.paid.prepare_wallet(
             self.grant_id,
