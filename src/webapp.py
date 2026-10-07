@@ -69,6 +69,8 @@ def commercial_coordinator() -> CommercialCoordinator:
 
 
 def paid_commercial_coordinator() -> PaidCommercialCoordinator:
+    if os.environ.get("AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY", "").strip() != "1":
+        raise CommercialLiveError("paid-capability-route-not-enabled")
     config = live_config()
     if config is None:
         raise CommercialLiveError("live-mode-not-configured")
