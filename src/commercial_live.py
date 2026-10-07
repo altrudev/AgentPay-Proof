@@ -21,7 +21,7 @@ from src.execution import ExecutionJournal, ExecutionStateError
 from src.live import LiveConfig
 from src.model import Authority, Intent, Quote, canonical_hash, decide
 from src.settlement import JsonRpcClient, SettlementError, transaction_request
-from src.provider_admission import ProviderRegistry
+from src.provider_admission import ProviderAdmission, ProviderBinding, ProviderRegistry
 
 
 class CommercialLiveError(RuntimeError):
@@ -198,6 +198,14 @@ class PaidCommercialCoordinator:
             self.provider_registry,
             now=now,
         )
+        try:
+            provider_binding, provider_admission = self.provider_registry.require(
+                grant.provider_id,
+                grant.capability,
+                now=now,
+            )
+        except ValueError as exc:
+            raise CommercialLiveError(str(exc)) from exc
         if route.payment_amount_atomic != grant.exact_price_atomic:
             raise CommercialLiveError("route-price-binding-mismatch")
         if route.payment_chain_id != self.live_config.chain_id:
@@ -281,6 +289,8 @@ class PaidCommercialCoordinator:
             "grant_digest": grant.digest,
             "route": asdict(route),
             "route_digest": route.digest,
+            "provider_binding": asdict(provider_binding),
+            "provider_admission": asdict(provider_admission),
             "payload": payload,
             "payload_digest": canonical_hash(payload),
             "intent": asdict(intent),
@@ -338,6 +348,18 @@ class PaidCommercialCoordinator:
         if context.get("execution_approval_digest") != execution_approval_digest:
             raise CommercialLiveError("execution-approval-mismatch")
         route = CapabilityRoute(**context["route"])
+        try:
+            active_binding, active_admission = self.provider_registry.require(
+                route.provider_id,
+                route.capability,
+                now=now,
+            )
+        except ValueError as exc:
+            raise CommercialLiveError(str(exc)) from exc
+        if active_binding.digest != route.provider_binding_digest:
+            raise CommercialLiveError("execution-provider-binding-changed")
+        if active_admission.digest != route.provider_admission_digest:
+            raise CommercialLiveError("execution-provider-admission-changed")
         authority = Authority(**context["authority"])
         quote = Quote(**context["quote"])
         if now > min(route.expires_at, authority.expires_at, quote.expires_at):
@@ -447,17 +469,18 @@ class PaidCommercialCoordinator:
         if route.offer_digest != selected.digest:
             raise CommercialLiveError("payment-offer-digest-mismatch")
         try:
-            binding, admission = self.provider_registry.require(
-                grant.provider_id,
-                grant.capability,
-                now=now,
-            )
-        except ValueError as exc:
-            raise CommercialLiveError(str(exc)) from exc
+            binding = ProviderBinding(**context["provider_binding"])
+            admission = ProviderAdmission(**context["provider_admission"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CommercialLiveError("payment-provider-snapshot-invalid") from exc
         if route.provider_binding_digest != binding.digest:
             raise CommercialLiveError("payment-provider-binding-mismatch")
         if route.provider_admission_digest != admission.digest:
             raise CommercialLiveError("payment-provider-admission-mismatch")
+        if admission.binding_digest != binding.digest or admission.decision != "ADMIT":
+            raise CommercialLiveError("payment-provider-admission-invalid")
+        if binding.provider_id != grant.provider_id or binding.capability != grant.capability:
+            raise CommercialLiveError("payment-provider-scope-mismatch")
         if route.provider_id != grant.provider_id or route.capability != grant.capability:
             raise CommercialLiveError("payment-route-scope-mismatch")
         if context.get("payload_digest") != canonical_hash(context.get("payload")):
