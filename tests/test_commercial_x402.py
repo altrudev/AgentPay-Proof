@@ -7,6 +7,7 @@ from src.commercial_demo import release_validation_objects
 from src.commercial_execution import CommercialCoordinator, CommercialExecutionJournal
 from src.commercial_x402 import CommercialX402Coordinator, CommercialX402Error, X402ExecutionJournal
 from src.live import LiveConfig
+from src.facilitator_admission import FacilitatorBinding, FacilitatorRegistry, FacilitatorTransportProof
 from src.provider_admission import ProviderBinding, ProviderRegistry
 from src.settlement import TRANSFER_TOPIC
 from src.x402 import AUTHORIZATION_USED_TOPIC, EIP3009Authorization, TRANSFER_WITH_AUTHORIZATION_SELECTOR
@@ -18,6 +19,10 @@ RESOURCE = "https://provider.example/v1/render-verify"
 NOW = 1_800_000_000
 TX = "0x" + "12" * 32
 SIG = "0x" + "11" * 65
+FACILITATOR_ID = "facilitator:test"
+VERIFY_URL = "https://facilitator.example/verify"
+SETTLE_URL = "https://facilitator.example/settle"
+TLS_PIN = "sha256:test-spki"
 
 
 def transfer_with_authorization_input(authorization):
@@ -69,6 +74,39 @@ def provider_registry():
     return registry
 
 
+def facilitator_registry():
+    binding = FacilitatorBinding(
+        facilitator_id=FACILITATOR_ID,
+        legal_identity="External Test Facilitator Ltd.",
+        verify_url=VERIFY_URL,
+        settle_url=SETTLE_URL,
+        schemes=("exact",),
+        networks=("eip155:8453",),
+        asset_contracts=(TOKEN,),
+        dns_names=("facilitator.example",),
+        tls_spki_sha256=(TLS_PIN,),
+        transport="https-json",
+        valid_from=NOW - 60,
+        valid_until=NOW + 3600,
+        version=1,
+    )
+    proof = FacilitatorTransportProof(
+        facilitator_id=FACILITATOR_ID,
+        verify_url=VERIFY_URL,
+        settle_url=SETTLE_URL,
+        resolved_host="facilitator.example",
+        tls_spki_sha256=TLS_PIN,
+        verify_behavior="verification-only",
+        settle_behavior="settlement-only",
+        independent_probe=True,
+        observed_at=NOW - 30,
+        valid_until=NOW + 600,
+    )
+    registry = FacilitatorRegistry()
+    assert registry.admit(binding, proof, now=NOW).decision == "ADMIT"
+    return registry
+
+
 def payment_required(amount="30000", extensions=None):
     document = {
         "x402Version": 2,
@@ -94,6 +132,11 @@ def payment_required(amount="30000", extensions=None):
 
 
 class FakeFacilitator:
+    facilitator_id = FACILITATOR_ID
+    verify_url = VERIFY_URL
+    settle_url = SETTLE_URL
+    tls_spki_sha256 = TLS_PIN
+
     def __init__(self, verify_valid=True, settle_mode="success"):
         self.verify_valid = verify_valid
         self.settle_mode = settle_mode
@@ -153,6 +196,7 @@ class CommercialX402Tests(unittest.TestCase):
         self.x402_journal = X402ExecutionJournal(self.x402_path)
         self.commercial = CommercialCoordinator(self.commercial_journal)
         self.registry = provider_registry()
+        self.facilitator_registry = facilitator_registry()
         self.config = LiveConfig(
             rpc_url="https://rpc.example",
             journal_path="unused.sqlite3",
@@ -181,6 +225,8 @@ class CommercialX402Tests(unittest.TestCase):
             live_config=self.config,
             provider_registry=self.registry,
             facilitator=facilitator,
+            facilitator_registry=self.facilitator_registry,
+            facilitator_id=FACILITATOR_ID,
             rpc=None,
         ), facilitator
 
@@ -193,6 +239,30 @@ class CommercialX402Tests(unittest.TestCase):
             payer=PAYER,
             now=NOW + 1,
         )
+
+    def test_unadmitted_facilitator_blocks_before_authorization(self):
+        self.facilitator_registry.revoke(FACILITATOR_ID)
+        coordinator, facilitator = self.coordinator()
+        with self.assertRaisesRegex(CommercialX402Error, "facilitator-not-admitted"):
+            self.prepare_x402(coordinator)
+        self.assertEqual(facilitator.calls, [])
+
+    def test_facilitator_runtime_endpoint_substitution_fails_closed(self):
+        facilitator = FakeFacilitator()
+        facilitator.verify_url = "https://evil.example/verify"
+        coordinator, _ = self.coordinator(facilitator)
+        with self.assertRaisesRegex(CommercialX402Error, "x402-facilitator-runtime-binding-mismatch"):
+            self.prepare_x402(coordinator)
+
+    def test_facilitator_revocation_after_signature_release_blocks_verify(self):
+        facilitator = FakeFacilitator()
+        coordinator, _ = self.coordinator(facilitator)
+        out = self.prepare_x402(coordinator)
+        coordinator.confirm(out["execution_id"], execution_approval_digest=out["execution_approval_digest"], now=NOW + 2)
+        self.facilitator_registry.revoke(FACILITATOR_ID)
+        with self.assertRaisesRegex(CommercialX402Error, "facilitator-not-admitted"):
+            coordinator.submit_signature_and_execute(out["execution_id"], signature=SIG, now=NOW + 3)
+        self.assertEqual(facilitator.calls, [])
 
     def test_prepare_is_bounded_and_idempotent(self):
         coordinator, _ = self.coordinator()
