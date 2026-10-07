@@ -138,7 +138,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(502, {"online": False, "error": "rpc-unavailable"})
         name = "index.html" if path == "/" else path.lstrip("/")
         base_allowed = {"index.html", "app.js", "styles.css", "agentpay-logo.webp", "agentpay-logo-transparent.png", "agentpay-mark.png", "agentpay-wordmark.png"}
-        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg")) and ".." not in Path(name).parts
+        is_v6_asset = name.startswith("assets/approved-v6/") and name.endswith((".png", ".svg", ".webp")) and ".." not in Path(name).parts
         if name not in base_allowed and not is_v6_asset:
             return self._json(404, {"error": "not-found"})
         target = (WEB / name).resolve()
