@@ -296,6 +296,7 @@ class Handler(BaseHTTPRequestHandler):
                     grant_id,
                     decision_id,
                     execution_approval_digest=execution_approval_digest,
+                    now=int(time.time()),
                 ))
             if path == "/api/commercial/live/abort":
                 grant_id = str(payload.get("grant_id", ""))
