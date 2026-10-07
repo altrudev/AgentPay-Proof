@@ -97,6 +97,7 @@ class WebAppTests(unittest.TestCase):
                 "AGENTPAY_USDC_ADDRESS",
                 "AGENTPAY_CHAIN_ID",
                 "AGENTPAY_MAX_AMOUNT_ATOMIC",
+                "AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY",
             )
         }
         for key in ("AGENTPAY_COMMERCIAL_STATE_DB", "AGENTPAY_STATE_DB"):
@@ -110,6 +111,7 @@ class WebAppTests(unittest.TestCase):
         os.environ["AGENTPAY_USDC_ADDRESS"] = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
         os.environ["AGENTPAY_CHAIN_ID"] = "8453"
         os.environ["AGENTPAY_MAX_AMOUNT_ATOMIC"] = "1000000"
+        os.environ["AGENTPAY_ENABLE_REFERENCE_PAID_CAPABILITY"] = "1"
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
