@@ -1,0 +1,21 @@
+{
+  "digest": "22994553dfb4e8310a4a04a2a3a8356044f51268df87fc531ed17fc4d714f6e3",
+  "facilitator_id": "facilitator:coinbase-cdp-x402-v2",
+  "observed_at": 1791406570,
+  "observer": "frequency:prometheus-independent-probe",
+  "resolved_addresses": [
+    "104.18.35.15",
+    "172.64.152.241",
+    "2a06:98c1:3102::ac40:98f1",
+    "2a06:98c1:310d::6812:230f"
+  ],
+  "resolved_host": "api.cdp.coinbase.com",
+  "settle_unauthenticated_status": 401,
+  "settle_url": "https://api.cdp.coinbase.com/platform/v2/x402/settle",
+  "tls_cert_sha256": "sha256:8723474657b0a08ca487d45f02a9f7ccfea50f8863a6f5c1c55a4bf61f5668ae",
+  "tls_issuer": "CN=WE1,O=Google Trust Services,C=US",
+  "tls_spki_sha256": "sha256:3629e1923cd6465df7c6621eec65e2931e3da959add4a868c85dcf4f3e3f20ca",
+  "tls_subject": "CN=coinbase.com",
+  "verify_unauthenticated_status": 401,
+  "verify_url": "https://api.cdp.coinbase.com/platform/v2/x402/verify"
+}
