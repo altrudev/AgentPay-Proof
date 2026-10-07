@@ -10,7 +10,7 @@ from src.commercial import (
 )
 
 
-def release_validation_demo(*, now: int) -> dict:
+def release_validation_objects(*, now: int) -> tuple[CommercialIntentCapsule, tuple[CapabilityOffer, ...]]:
     capsule = CommercialIntentCapsule(
         capsule_id="capsule:release-validation-demo",
         principal_id="principal:demo",
@@ -99,6 +99,11 @@ def release_validation_demo(*, now: int) -> dict:
         ),
     )
 
+    return capsule, offers
+
+
+def release_validation_demo(*, now: int) -> dict:
+    capsule, offers = release_validation_objects(now=now)
     plan = plan_commercial_action(capsule, offers, now=now)
     return {
         "schema": "agentpay-commercial-demo/1",
