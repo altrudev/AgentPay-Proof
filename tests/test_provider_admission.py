@@ -56,6 +56,14 @@ class ProviderAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "provider-capability-binding-mismatch"):
             registry.require(binding.provider_id, "different.capability", now=NOW)
 
+    def test_registry_revocation_fails_closed(self):
+        registry = ProviderRegistry()
+        binding = reference_provider_binding(payment_recipient=RECIPIENT, now=NOW)
+        registry.admit(binding, now=NOW)
+        registry.revoke(binding.provider_id)
+        with self.assertRaisesRegex(ValueError, "provider-not-admitted"):
+            registry.require(binding.provider_id, binding.capability, now=NOW)
+
     def test_registry_expiry_fails_closed(self):
         registry = ProviderRegistry()
         binding = reference_provider_binding(payment_recipient=RECIPIENT, now=NOW)
