@@ -134,6 +134,7 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             self.grant_id,
             out["payment_decision_id"],
             execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
         )
         self.assertEqual(confirmed["status"], "AWAITING_WALLET")
         self.assertEqual(confirmed["wallet_request"]["chainId"], hex(8453))
@@ -152,6 +153,23 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
                 self.grant_id,
                 out["payment_decision_id"],
                 execution_approval_digest="wrong",
+                now=NOW + 1,
+            )
+        self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
+
+    def test_execution_approval_expiry_never_releases_wallet_request(self):
+        out = self.paid.prepare_wallet(
+            self.grant_id,
+            commercial_approval_digest=self.approval,
+            payload=self.payload,
+            now=NOW + 1,
+        )
+        with self.assertRaisesRegex(CommercialLiveError, "execution-approval-expired"):
+            self.paid.confirm_wallet(
+                self.grant_id,
+                out["payment_decision_id"],
+                execution_approval_digest=out["execution_approval_digest"],
+                now=NOW + 301,
             )
         self.assertEqual(self.commercial_journal.get(self.grant_id).state, "PREPARED")
 
@@ -214,6 +232,7 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             self.grant_id,
             out["payment_decision_id"],
             execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
         )
         result = self.paid.reconcile(
             self.grant_id,
@@ -244,6 +263,7 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             self.grant_id,
             out["payment_decision_id"],
             execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
         )
         with self.assertRaisesRegex(CommercialLiveError, "commercial-settlement-not-observed"):
             self.paid.reconcile(
@@ -267,6 +287,7 @@ class PaidCommercialCoordinatorTests(unittest.TestCase):
             self.grant_id,
             out["payment_decision_id"],
             execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 1,
         )
         self.paid.reconcile(
             self.grant_id,
