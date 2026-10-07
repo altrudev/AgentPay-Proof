@@ -286,6 +286,17 @@ class Handler(BaseHTTPRequestHandler):
                     },
                     now=int(time.time()),
                 ))
+            if path == "/api/commercial/live/confirm":
+                grant_id = str(payload.get("grant_id", ""))
+                decision_id = str(payload.get("payment_decision_id", ""))
+                execution_approval_digest = str(payload.get("execution_approval_digest", ""))
+                if not all((grant_id, decision_id, execution_approval_digest)):
+                    return self._json(400, {"error": "commercial-wallet-confirm-fields-required"})
+                return self._json(200, paid_commercial_coordinator().confirm_wallet(
+                    grant_id,
+                    decision_id,
+                    execution_approval_digest=execution_approval_digest,
+                ))
             if path == "/api/commercial/live/abort":
                 grant_id = str(payload.get("grant_id", ""))
                 decision_id = str(payload.get("payment_decision_id", ""))
