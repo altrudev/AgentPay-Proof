@@ -11,3 +11,4 @@ testpaths = ["tests"]
 
 [project.optional-dependencies]
 visual = ["Pillow>=10"]
+provider = ["cryptography>=45"]

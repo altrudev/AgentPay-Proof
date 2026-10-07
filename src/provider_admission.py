@@ -163,6 +163,19 @@ class ProviderRegistry:
         self._admissions[binding.provider_id] = admission
         return admission
 
+    def restore(self, binding: ProviderBinding, admission: ProviderAdmission) -> None:
+        if admission.decision != "ADMIT":
+            raise ValueError("provider-not-admitted")
+        if admission.provider_id != binding.provider_id:
+            raise ValueError("provider-admission-provider-mismatch")
+        if admission.binding_digest != binding.digest:
+            raise ValueError("provider-admission-binding-mismatch")
+        current = self._bindings.get(binding.provider_id)
+        if current is not None and binding.version <= current.version:
+            raise ValueError("provider-version-not-monotonic")
+        self._bindings[binding.provider_id] = binding
+        self._admissions[binding.provider_id] = admission
+
     def revoke(self, provider_id: str) -> None:
         if provider_id not in self._bindings:
             raise ValueError("provider-not-admitted")
