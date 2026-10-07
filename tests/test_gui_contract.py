@@ -63,7 +63,7 @@ class ApprovedGuiContractTests(unittest.TestCase):
 
     def test_workflow_flow_is_crossfaded_not_hard_stacked(self):
         self.assertIn("flow-background.webp", HTML)
-        self.assertIn("top:276px;width:1474px;height:224px", CSS)
+        self.assertIn("top:258px;width:1474px;height:242px", CSS)
         self.assertIn("mask-image:linear-gradient", CSS)
         self.assertIn(".flow-line{display:none}", CSS)
 
