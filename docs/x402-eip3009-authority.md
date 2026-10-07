@@ -259,3 +259,87 @@ Those omissions are intentional. A real facilitator and real provider need indep
 The direct ERC-20 path remains available for explicit human-wallet flows and existing compatibility tests.
 
 For admitted x402-capable providers, EIP-3009 is the preferred future rail because it gives Frequency an on-chain-enforced one-time nonce and validity window while preserving post-resource settlement.
+
+## DDC/Frequency hardening pass
+
+The post-merge audit tightened four boundaries that are required before the x402 rail can be treated as a durable commercial authority mechanism.
+
+### Full PaymentRequired binding
+
+The exact `PaymentRequired` document is now hashed into the execution approval and persisted with the execution context.
+
+The bounded AgentPay profile rejects unknown PaymentRequirements fields and unknown `extra` semantics instead of silently dropping them. Top-level x402 extensions are preserved and echoed into the PaymentPayload, as required by x402 v2.
+
+This prevents a server from changing extension semantics, resource metadata, or another payment requirement after the user has approved the commercial action.
+
+### Signed evidence before resource dispatch
+
+A successful facilitator `/verify` response and the exact signed PaymentPayload are persisted and committed by a write-once `signed_evidence_digest` before the resource is dispatched.
+
+This closes the crash window where a resource could execute but the exact signed payment material had not yet reached durable storage.
+
+The durable sequence is now:
+
+```
+SIGNING
+→ verify authorization
+→ persist signed PaymentPayload + verify result
+→ VERIFIED
+→ RESOURCE_DISPATCHED
+```
+
+A changed signed payload or verify response is rejected during later reconciliation.
+
+### Resource result before settlement
+
+After successful resource execution, the exact dispatch ID, artifact and underlying execution receipt are committed through a separate write-once `resource_result_digest` before the state can become `RESOURCE_EXECUTED`.
+
+The sequence is:
+
+```
+RESOURCE_DISPATCHED
+→ execute resource
+→ persist artifact + execution receipt + resource result digest
+→ RESOURCE_EXECUTED
+→ SETTLEMENT_PENDING
+```
+
+If execution becomes ambiguous before that durable result exists, settlement must not proceed automatically.
+
+### Independent calldata observation
+
+Final Base observation no longer relies only on `AuthorizationUsed` and `Transfer` logs.
+
+For the direct EIP-3009 profile, AgentPay also decodes the successful USDC transaction calldata and requires the `transferWithAuthorization` selector and exact approved values for:
+
+- payer
+- payee
+- amount
+- `validAfter`
+- `validBefore`
+- nonce
+
+The on-chain logs must still independently show both:
+
+- the expected authorization nonce consumed for the payer
+- the exact USDC transfer to the expected payee for the expected amount
+
+This binds the observed settlement to the exact approved authorization window rather than merely to a matching transfer event.
+
+### Evidence carried into Commercial Proof
+
+The paid action receipt now also binds:
+
+- PaymentPayload digest
+- facilitator verification digest
+- durable resource-result digest
+- EIP-3009 authorization digest and nonce
+- independently observed settlement digest
+
+The final Commercial Proof therefore connects the human-approved commercial boundary to the wallet signature, pre-resource verification, resource result and independently observed settlement.
+
+### Production boundary remains closed
+
+This hardening does not expose x402 through the production HTTP API and does not enable a facilitator or provider by default.
+
+A production route still requires separately admitted provider and facilitator identities plus a reviewed transport adapter. No private key, wallet seed or autonomous standing wallet authority is introduced by this layer.
