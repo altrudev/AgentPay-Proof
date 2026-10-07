@@ -11,7 +11,8 @@ from src.live import LiveConfig, LiveCoordinator, LivePaymentError
 from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
-from src.service import ServiceRequest
+from src.protocol import catalog_document, discovery_document
+from src.service import ServiceRequest, resolve_service_id
 from src.verifier import verify
 from src.settlement import JsonRpcClient, SettlementError
 from src.workflow import AgentPayWorkflow
@@ -65,9 +66,9 @@ def workflow() -> AgentPayWorkflow:
     )
 
 
-def run_demo(amount_atomic: int, document: str) -> dict:
+def run_demo(amount_atomic: int, document: str, service_id: str = "code-analysis-v1") -> dict:
     outcome = workflow().purchase(
-        ServiceRequest(document), agent_id="agent:judge-demo",
+        ServiceRequest(document, resolve_service_id(service_id)), agent_id="agent:judge-demo",
         now=1_800_000_000, quote_amount_atomic=amount_atomic,
     )
     return {"environment": "DEMO", **outcome}
@@ -106,6 +107,14 @@ class Handler(BaseHTTPRequestHandler):
                 "live_enabled": config is not None,
                 "live_chain_id": config.chain_id if config else None,
             })
+        if path == "/api/catalog":
+            return self._json(200, catalog_document())
+        if path == "/api/discovery":
+            service_id = "code-analysis-v1"
+            try:
+                return self._json(200, discovery_document(service_id))
+            except ValueError:
+                return self._json(404, {"error": "service-not-found"})
         if path == "/api/live/config":
             config = live_config()
             return self._json(200, {
@@ -210,21 +219,27 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/run":
                 amount = int(payload.get("amount_atomic", 250_000))
                 document = str(payload.get("document", ""))[:5000]
+                service_id = str(payload.get("service_id", "code-analysis-v1"))
                 if not document.strip() or amount <= 0 or amount > 10_000_000:
                     return self._json(400, {"error": "invalid-request"})
-                return self._json(200, run_demo(amount, document))
+                return self._json(200, run_demo(amount, document, service_id))
             if path == "/api/tamper":
                 proof = payload.get("proof")
                 if not isinstance(proof, dict):
                     return self._json(400, {"error": "proof-required"})
                 return self._json(200, tamper_demo(proof))
             if path == "/api/live/prepare":
-                amount = int(payload.get("amount_atomic", 250_000))
+                raw_amount = payload.get("amount_atomic")
+                amount = None if raw_amount in (None, "") else int(raw_amount)
                 document = str(payload.get("document", ""))[:5000]
-                if not document.strip() or amount <= 0 or amount > 10_000_000:
+                service_id = str(payload.get("service_id", "code-analysis-v1"))
+                if not document.strip() or (amount is not None and (amount <= 0 or amount > 10_000_000)):
                     return self._json(400, {"error": "invalid-request"})
                 return self._json(200, live_coordinator().prepare(
-                    document, amount_atomic=amount, agent_id="agent:browser-wallet"
+                    document,
+                    amount_atomic=amount,
+                    agent_id="agent:browser-wallet",
+                    service_id=service_id,
                 ))
             if path == "/api/live/abort":
                 decision_id = str(payload.get("decision_id", ""))
