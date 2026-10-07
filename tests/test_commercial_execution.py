@@ -179,8 +179,9 @@ class CommercialExecutionBoundaryTests(unittest.TestCase):
             raw["requires_human_approval"],
             raw["reason"],
         )
+        substituted = other if plan.selected_offer_id != other.offer_id else safe
         with self.assertRaisesRegex(CommercialExecutionError, "plan-offer-binding-mismatch"):
-            project_commercial_grant(capsule(), plan, other, now=NOW + 1)
+            project_commercial_grant(capsule(), plan, substituted, now=NOW + 1)
 
 
 if __name__ == "__main__":
