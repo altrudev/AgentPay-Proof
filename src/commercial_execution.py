@@ -306,7 +306,7 @@ def _approval_digest(grant: CommercialGrant, explanation: dict[str, Any]) -> str
     })
 
 
-def _reference_capability_execute(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
+def execute_reference_capability(grant: CommercialGrant, payload: dict[str, Any]) -> ReferenceCapabilityResult:
     if grant.capability != "browser.render.verify":
         raise CommercialExecutionError("reference-capability-unsupported")
     if set(payload) - {"rendered_page_digest", "reference_digest"}:
@@ -340,7 +340,7 @@ def _reference_capability_execute(grant: CommercialGrant, payload: dict[str, Any
     return ReferenceCapabilityResult(action_id, action_receipt, artifact)
 
 
-def _assess_reference_outcome(
+def assess_reference_outcome(
     capsule: CommercialIntentCapsule,
     grant: CommercialGrant,
     result: ReferenceCapabilityResult,
@@ -484,13 +484,13 @@ class CommercialCoordinator:
             raise CommercialExecutionError(f"commercial-execution-not-approvable:{current.state}")
 
         try:
-            result = _reference_capability_execute(grant, payload)
+            result = execute_reference_capability(grant, payload)
         except Exception as exc:
             self.journal.mark_in_doubt(grant_id)
             raise CommercialExecutionError("commercial-reference-dispatch-unknown") from exc
 
         self.journal.mark_dispatched(grant_id, result.action_id)
-        assessment = _assess_reference_outcome(capsule, grant, result, now=now)
+        assessment = assess_reference_outcome(capsule, grant, result, now=now)
         if assessment.verdict != "PASS":
             self.journal.mark_in_doubt(grant_id, result.action_id)
             raise CommercialExecutionError("commercial-outcome-not-satisfied")
