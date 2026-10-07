@@ -8,6 +8,7 @@ from src.commercial_execution import (
     CommercialExecutionError,
     CommercialExecutionJournal,
     project_commercial_grant,
+    verify_commercial_bundle,
 )
 
 
@@ -108,6 +109,60 @@ class CommercialExecutionBoundaryTests(unittest.TestCase):
         self.assertEqual(result["monetary_settlement"], "NOT_PERFORMED")
         self.assertEqual(result["outcome_assessment"]["verdict"], "PASS")
         self.assertEqual(self.journal.get(out["grant"]["grant_id"]).state, "CONSUMED")
+
+    def test_bundle_verifier_rejects_inner_artifact_substitution(self):
+        out = self.coordinator.prepare(capsule(), [offer()], now=NOW + 1)
+        result = self.coordinator.approve_and_execute_reference(
+            out["grant"]["grant_id"],
+            approval_digest=out["approval_digest"],
+            payload={"rendered_page_digest": "rendered:a", "reference_digest": "reference:b"},
+            now=NOW + 2,
+        )
+        context = self.journal.context(out["grant"]["grant_id"])
+        from src.commercial import CommercialPlan, OfferEvaluation
+        raw = context["plan"]
+        plan = CommercialPlan(
+            raw["capsule_digest"],
+            raw["selected_offer_digest"],
+            raw["selected_offer_id"],
+            tuple(raw["permitted_offer_ids"]),
+            tuple(
+                OfferEvaluation(
+                    item["offer_id"], item["decision"], tuple(item["reasons"]), item["disclosure_count"]
+                ) for item in raw["rejected"]
+            ),
+            tuple(raw["frontier_offer_ids"]),
+            raw["requires_human_approval"],
+            raw["reason"],
+        )
+        cap = CommercialIntentCapsule(**context["capsule"])
+        selected = next(CapabilityOffer(**item) for item in context["offers"] if item["offer_id"] == plan.selected_offer_id)
+        grant = project_commercial_grant(cap, plan, selected, now=NOW + 1)
+        from src.commercial_execution import CommercialOutcomeAssessment
+        assessment_raw = result["outcome_assessment"]
+        assessment = CommercialOutcomeAssessment(
+            verdict=assessment_raw["verdict"],
+            target=assessment_raw["target"],
+            observed_confidence_bps=assessment_raw["observed_confidence_bps"],
+            evidence_digest=assessment_raw["evidence_digest"],
+            observed_at=assessment_raw["observed_at"],
+            reason=assessment_raw["reason"],
+        )
+        tampered_artifact = dict(result["artifact"])
+        tampered_artifact["confidence_bps"] = 9999
+        verdict = verify_commercial_bundle(
+            capsule=cap,
+            plan=plan,
+            offer=selected,
+            grant=grant,
+            action_receipt=result["action_receipt"],
+            artifact=tampered_artifact,
+            assessment=assessment,
+            proof=result["commercial_proof"],
+        )
+        self.assertEqual(verdict["verdict"], "NOT VERIFIED")
+        self.assertIn("action-artifact-binding-mismatch", verdict["errors"])
+        self.assertIn("assessment-confidence-binding-mismatch", verdict["errors"])
 
     def test_consumed_grant_cannot_execute_again(self):
         out = self.coordinator.prepare(capsule(), [offer()], now=NOW + 1)
