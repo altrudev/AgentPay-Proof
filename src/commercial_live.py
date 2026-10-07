@@ -119,11 +119,9 @@ def _payment_identity(
     route: CapabilityRoute,
     payload: dict[str, Any],
 ) -> tuple[str, str, str]:
-    payload_digest = canonical_hash(payload)
     binding = {
         "grant_digest": grant.digest,
         "route_digest": route.digest,
-        "payload_digest": payload_digest,
     }
     digest = canonical_hash(binding)
     return (
@@ -181,10 +179,10 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("route-asset-binding-mismatch")
 
         record = self.commercial_journal.get(grant_id)
-        if record.state == "PREPARED":
-            self.commercial_journal.approve(grant_id, commercial_approval_digest)
-        elif record.state != "APPROVED":
+        if record.state != "PREPARED":
             raise CommercialLiveError(f"commercial-wallet-prepare-not-allowed:{record.state}")
+        if self.commercial_journal.approval_digest(grant_id) != commercial_approval_digest:
+            raise CommercialLiveError("commercial-approval-mismatch")
 
         intent_id, quote_id, decision_id = _payment_identity(grant, route, payload)
         request_digest = canonical_hash({
@@ -228,6 +226,27 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("commercial-payment-authority-denied")
 
         tx = transaction_request(authority, quote, now=now)
+        execution_hio = {
+            "provider_id": grant.provider_id,
+            "capability": grant.capability,
+            "amount_atomic": route.payment_amount_atomic,
+            "asset": grant.settlement_asset,
+            "chain_id": route.payment_chain_id,
+            "recipient": route.payment_recipient,
+            "disclosures": list(grant.disclosures),
+            "retention_seconds": grant.retention_seconds,
+            "credential_ttl_seconds": grant.credential_ttl_seconds,
+            "payload_digest": canonical_hash(payload),
+            "requires_wallet_approval": True,
+        }
+        execution_approval_digest = canonical_hash({
+            "schema": "agentpay-commercial-execution-approval/1",
+            "grant_digest": grant.digest,
+            "route_digest": route.digest,
+            "payload_digest": canonical_hash(payload),
+            "transaction": tx,
+            "hio": execution_hio,
+        })
         context = {
             "grant_id": grant.grant_id,
             "grant_digest": grant.digest,
@@ -240,6 +259,9 @@ class PaidCommercialCoordinator:
             "authority": asdict(authority),
             "transaction": tx,
             "commercial_explanation_digest": canonical_hash(explanation),
+            "commercial_approval_digest": commercial_approval_digest,
+            "execution_hio": execution_hio,
+            "execution_approval_digest": execution_approval_digest,
         }
         context_json = json.dumps(context, sort_keys=True, separators=(",", ":"))
 
@@ -258,31 +280,59 @@ class PaidCommercialCoordinator:
 
         return {
             "environment": "LIVE",
-            "status": "AWAITING_WALLET",
+            "status": "AWAITING_EXECUTION_APPROVAL",
             "grant_id": grant.grant_id,
             "grant_digest": grant.digest,
             "route": {**asdict(route), "digest": route.digest},
             "payment_decision_id": decision_id,
             "payment_authority": {**asdict(authority), "digest": authority.digest},
             "quote": {**asdict(quote), "digest": quote.digest},
+            "execution_approval_digest": execution_approval_digest,
+            "wallet_request": None,
+            "hio": execution_hio,
+        }
+
+    def confirm_wallet(
+        self,
+        grant_id: str,
+        decision_id: str,
+        *,
+        execution_approval_digest: str,
+    ) -> dict[str, Any]:
+        raw = self.payment_journal.context(decision_id)
+        if not raw:
+            raise CommercialLiveError("commercial-payment-context-missing")
+        context = json.loads(raw)
+        if context.get("grant_id") != grant_id:
+            raise CommercialLiveError("wallet-grant-binding-mismatch")
+        if context.get("execution_approval_digest") != execution_approval_digest:
+            raise CommercialLiveError("execution-approval-mismatch")
+        payment = self.payment_journal.get(decision_id)
+        if payment.state != "PREPARED":
+            raise CommercialLiveError(f"wallet-confirm-not-allowed:{payment.state}")
+        commercial = self.commercial_journal.get(grant_id)
+        if commercial.state == "PREPARED":
+            self.commercial_journal.approve(
+                grant_id,
+                context.get("commercial_approval_digest", ""),
+            )
+        elif commercial.state != "APPROVED":
+            raise CommercialLiveError(
+                f"commercial-wallet-confirm-not-allowed:{commercial.state}"
+            )
+        tx = context["transaction"]
+        return {
+            "environment": "LIVE",
+            "status": "AWAITING_WALLET",
+            "grant_id": grant_id,
+            "payment_decision_id": decision_id,
             "wallet_request": {
                 "chainId": hex(tx["chain_id"]),
                 "to": tx["to"],
                 "value": hex(tx["value"]),
                 "data": tx["data"],
             },
-            "hio": {
-                "provider_id": grant.provider_id,
-                "capability": grant.capability,
-                "amount_atomic": route.payment_amount_atomic,
-                "asset": grant.settlement_asset,
-                "chain_id": route.payment_chain_id,
-                "recipient": route.payment_recipient,
-                "disclosures": list(grant.disclosures),
-                "retention_seconds": grant.retention_seconds,
-                "credential_ttl_seconds": grant.credential_ttl_seconds,
-                "requires_wallet_approval": True,
-            },
+            "hio": context["execution_hio"],
         }
 
     def abort_wallet(self, grant_id: str, decision_id: str) -> dict[str, Any]:
@@ -294,7 +344,7 @@ class PaidCommercialCoordinator:
             raise CommercialLiveError("wallet-grant-binding-mismatch")
         self.payment_journal.abort_prepared(decision_id)
         commercial = self.commercial_journal.get(grant_id)
-        if commercial.state == "APPROVED":
+        if commercial.state in {"PREPARED", "APPROVED"}:
             self.commercial_journal.abort(grant_id)
         return {
             "environment": "LIVE",
@@ -311,8 +361,11 @@ class PaidCommercialCoordinator:
         if payment.state == "PREPARED":
             payment = self.payment_journal.mark_in_doubt(decision_id)
         commercial = self.commercial_journal.get(grant_id)
-        if commercial.state == "APPROVED":
-            commercial = self.commercial_journal.mark_in_doubt(grant_id)
+        if commercial.state != "APPROVED":
+            raise CommercialLiveError(
+                f"wallet-uncertain-not-allowed:{commercial.state}"
+            )
+        commercial = self.commercial_journal.mark_in_doubt(grant_id)
         return {
             "environment": "LIVE",
             "grant_id": grant_id,
@@ -340,6 +393,11 @@ class PaidCommercialCoordinator:
         context = json.loads(raw_context)
         if context.get("grant_id") != grant_id:
             raise CommercialLiveError("wallet-grant-binding-mismatch")
+        commercial_before_settlement = self.commercial_journal.get(grant_id)
+        if commercial_before_settlement.state not in {"APPROVED", "IN_DOUBT", "DISPATCHED"}:
+            raise CommercialLiveError(
+                f"commercial-settlement-not-authorized:{commercial_before_settlement.state}"
+            )
 
         capsule, offers, plan, selected, grant, explanation = reconstruct_commercial_context(
             self.commercial_journal,
