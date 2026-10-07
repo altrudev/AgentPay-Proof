@@ -284,6 +284,65 @@ function openProof(){
  $("#evidence-dialog").showModal();
 }
 
+
+function showContent(kicker,title,html){
+ $("#content-kicker").textContent=kicker;
+ $("#content-title").textContent=title;
+ $("#content-body").innerHTML=html;
+ $("#content-dialog").showModal();
+}
+
+function openExplorer(){
+ if(!catalog.length){
+  showStatus("Catalog unavailable","The service catalog has not loaded.");
+  return;
+ }
+ const cards=catalog.map(service=>`
+   <button class="catalog-row" type="button" data-open-service="${esc(service.slug)}">
+     <span><b>${esc(service.title)}</b><small>${esc(service.description)}</small></span>
+     <em>${esc(usdc(service.price_atomic))}</em>
+   </button>`).join("");
+ showContent("MACHINE-READABLE SERVICE CATALOG","Explore Services",`
+   <p>Every listed service has a fixed server-owned price, a bounded request contract, and a verifiable evidence path.</p>
+   <div class="catalog-list">${cards}</div>
+   <p class="content-foot">Discovery schema: <code>agentpay-catalog/1</code> · settlement asset: USDC · governed chain: ${esc(chainName(liveConfig.chain_id))}</p>`);
+ $("#content-body [data-open-service]").forEach(btn=>btn.onclick=()=>{
+  $("#content-dialog").close();
+  openService(btn.dataset.openService);
+ });
+}
+
+function openDevelopers(){
+ const rows=catalog.map(service=>`
+   <tr><td><code>${esc(service.service_id)}</code></td><td>${esc(service.slug)}</td><td>${esc(usdc(service.price_atomic))}</td></tr>`).join("");
+ showContent("OPEN INTEGRATION SURFACE","Developers",`
+   <p>AgentPay exposes a small machine-readable interface. Frequency remains outside the public product boundary; the public contract is quotes, bounded authority, settlement evidence, service result and proof.</p>
+   <div class="endpoint-grid">
+     <article><small>GET</small><b>/api/catalog</b><span>Discover available services and exact prices.</span></article>
+     <article><small>GET</small><b>/api/discovery?service_id=code</b><span>Inspect one service contract.</span></article>
+     <article><small>POST</small><b>/api/live/prepare</b><span>Reserve exact one-shot authority before wallet handoff.</span></article>
+     <article><small>POST</small><b>/api/live/reconcile</b><span>Independently reconstruct Base settlement and complete proof.</span></article>
+   </div>
+   <table class="developer-table"><thead><tr><th>Service</th><th>Slug</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>
+   <div class="dialog-actions"><a class="link-button" href="https://github.com/altrudev/AgentPay-Proof" target="_blank" rel="noopener">Open GitHub ↗</a></div>`);
+}
+
+function openDocs(){
+ showContent("PRODUCT + ASSURANCE","Documentation",`
+   <p><b>AgentPay Proof</b> governs autonomous service payments without giving software unrestricted economic authority.</p>
+   <ol class="docs-flow">
+     <li><b>Intent</b><span>The exact service request is hashed and bound to the agent intent.</span></li>
+     <li><b>Quote</b><span>Service, recipient, Base chain, USDC asset, amount and expiry become immutable evidence.</span></li>
+     <li><b>Authority</b><span>Frequency-compatible policy decides PERMIT or DENY before settlement.</span></li>
+     <li><b>Settlement</b><span>The external wallet approves the exact ERC-20 transfer; AgentPay never receives the private key.</span></li>
+     <li><b>Execution</b><span>The selected bounded service executes only after settlement is independently observed.</span></li>
+     <li><b>Observation</b><span>A distinct observer binds the settlement to the service artifact.</span></li>
+     <li><b>Proof</b><span>Portable evidence can be downloaded and independently verified; mutation fails verification.</span></li>
+   </ol>
+   <p class="content-foot">Ambiguous dispatch becomes <code>IN_DOUBT</code>. AgentPay does not silently retry a payment.</p>
+   <div class="dialog-actions"><a class="link-button" href="https://github.com/altrudev/AgentPay-Proof/tree/main/docs" target="_blank" rel="noopener">Repository Docs ↗</a></div>`);
+}
+
 function openCompanion(){
  const actions=[];
  let message="";
@@ -365,11 +424,14 @@ async function init(){
 }
 
 $("#run-service").onclick=()=>openService("code");
+$("#nav-explore").onclick=openExplorer;
 $("#nav-run").onclick=()=>openService("code");
-$("#network-control").onclick=()=>connectWallet();
 $("#nav-proofs").onclick=()=>openProof();
-$("#explore").onclick=focusServices;
-$("#search-control").onclick=focusServices;
+$("#nav-developers").onclick=openDevelopers;
+$("#nav-docs").onclick=openDocs;
+$("#network-control").onclick=()=>connectWallet();
+$("#explore").onclick=openExplorer;
+$("#search-control").onclick=openExplorer;
 $("#theme-control").onclick=()=>document.body.classList.toggle("dim");
 $("#menu-control").onclick=openCompanion;
 $("#service-cancel").onclick=()=>$("#service-dialog").close();
