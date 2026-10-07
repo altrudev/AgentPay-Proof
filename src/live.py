@@ -66,7 +66,9 @@ class LiveCoordinator:
         now = int(time.time()) if now is None else now
         service_id = resolve_service_id(service_id)
         request = ServiceRequest(document, service_id)
-        price = SERVICE_SPECS[service_id]["price_atomic"] if amount_atomic is None else amount_atomic
+        price = SERVICE_SPECS[service_id]["price_atomic"]
+        if amount_atomic is not None and amount_atomic != price:
+            raise LivePaymentError("service-price-mismatch")
         quote = Quote(
             quote_id=f"live-q-{uuid.uuid4()}",
             service_id=service_id,
