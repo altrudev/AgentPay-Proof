@@ -621,3 +621,65 @@ def verify_commercial_bundle(
         "verdict": "VERIFIED" if not errors else "NOT VERIFIED",
         "errors": sorted(set(errors)),
     }
+
+
+def reconstruct_commercial_context(
+    journal: CommercialExecutionJournal,
+    grant_id: str,
+    *,
+    now: int,
+) -> tuple[
+    CommercialIntentCapsule,
+    tuple[CapabilityOffer, ...],
+    CommercialPlan,
+    CapabilityOffer,
+    CommercialGrant,
+    dict[str, Any],
+]:
+    data = journal.context(grant_id)
+    capsule = CommercialIntentCapsule(**data["capsule"])
+    offers = tuple(CapabilityOffer(**item) for item in data["offers"])
+    raw = data["plan"]
+    plan = CommercialPlan(
+        capsule_digest=raw["capsule_digest"],
+        selected_offer_digest=raw["selected_offer_digest"],
+        selected_offer_id=raw["selected_offer_id"],
+        permitted_offer_ids=tuple(raw["permitted_offer_ids"]),
+        rejected=tuple(
+            OfferEvaluation(
+                offer_id=item["offer_id"],
+                decision=item["decision"],
+                reasons=tuple(item["reasons"]),
+                disclosure_count=item["disclosure_count"],
+            )
+            for item in raw["rejected"]
+        ),
+        frontier_offer_ids=tuple(raw["frontier_offer_ids"]),
+        requires_human_approval=raw["requires_human_approval"],
+        reason=raw["reason"],
+    )
+    if not plan.selected_offer_id:
+        raise CommercialExecutionError("commercial-selected-offer-missing")
+    try:
+        selected = next(offer for offer in offers if offer.offer_id == plan.selected_offer_id)
+    except StopIteration as exc:
+        raise CommercialExecutionError("commercial-selected-offer-missing") from exc
+
+    projection_time = min(now, capsule.expires_at, selected.expires_at)
+    grant = project_commercial_grant(
+        capsule,
+        plan,
+        selected,
+        now=projection_time,
+    )
+    if grant.grant_id != grant_id:
+        raise CommercialExecutionError("commercial-grant-reconstruction-mismatch")
+    persisted_grant = data.get("grant")
+    if not isinstance(persisted_grant, dict) or persisted_grant != asdict(grant):
+        raise CommercialExecutionError("commercial-grant-context-mismatch")
+    explanation = data.get("explanation")
+    if not isinstance(explanation, dict):
+        raise CommercialExecutionError("commercial-explanation-missing")
+    if plan_explanation(capsule, offers, plan) != explanation:
+        raise CommercialExecutionError("commercial-explanation-binding-mismatch")
+    return capsule, offers, plan, selected, grant, explanation
