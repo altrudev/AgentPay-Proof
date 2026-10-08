@@ -344,6 +344,38 @@ def settlement_transaction(response: dict[str, Any], *, payer: str, network: str
     return tx
 
 
+def encode_transfer_with_authorization_calldata(
+    authorization: EIP3009Authorization, signature: str
+) -> str:
+    signature = validate_signature(signature)
+    raw = signature[2:]
+    r = raw[:64]
+    s = raw[64:128]
+    v = int(raw[128:130], 16)
+    if v in {0, 1}:
+        v += 27
+    if v not in {27, 28}:
+        raise X402Error("x402-signature-v-invalid")
+
+    def address_word(value: str) -> str:
+        return value[2:].lower().rjust(64, "0")
+
+    def int_word(value: int) -> str:
+        return hex(int(value))[2:].rjust(64, "0")
+
+    return TRANSFER_WITH_AUTHORIZATION_SELECTOR + "".join((
+        address_word(authorization.from_address),
+        address_word(authorization.to),
+        int_word(authorization.value),
+        int_word(authorization.valid_after),
+        int_word(authorization.valid_before),
+        authorization.nonce[2:].lower(),
+        int_word(v),
+        r,
+        s,
+    ))
+
+
 def decode_transfer_with_authorization_calldata(input_data: str) -> dict[str, Any]:
     value = str(input_data).strip().lower()
     if not value.startswith(TRANSFER_WITH_AUTHORIZATION_SELECTOR):
@@ -366,6 +398,44 @@ def decode_transfer_with_authorization_calldata(input_data: str) -> dict[str, An
         }
     except (ValueError, X402Error) as exc:
         raise SettlementError("x402-transfer-with-authorization-calldata-invalid") from exc
+
+
+def find_eip3009_settlement_transaction(
+    rpc: JsonRpcClient,
+    requirement: X402Requirement,
+    authorization: EIP3009Authorization,
+    *,
+    lookback_blocks: int = 4096,
+) -> str | None:
+    if lookback_blocks <= 0 or lookback_blocks > 100_000:
+        raise SettlementError("x402-reconcile-lookback-invalid")
+    latest_raw = rpc.call("eth_blockNumber", [])
+    if latest_raw is None:
+        raise SettlementError("x402-reconcile-block-unavailable")
+    latest = _hex_int(latest_raw)
+    start = max(0, latest - lookback_blocks)
+    authorizer_topic = "0x" + authorization.from_address[2:].lower().rjust(64, "0")
+    logs = rpc.call(
+        "eth_getLogs",
+        [{
+            "address": requirement.asset,
+            "fromBlock": hex(start),
+            "toBlock": "latest",
+            "topics": [AUTHORIZATION_USED_TOPIC, authorizer_topic, authorization.nonce],
+        }],
+    )
+    if logs is None:
+        raise SettlementError("x402-reconcile-logs-unavailable")
+    tx_hashes = sorted({
+        str(item.get("transactionHash", "")).lower()
+        for item in logs
+        if isinstance(item, dict) and str(item.get("transactionHash", "")).startswith("0x")
+    })
+    if not tx_hashes:
+        return None
+    if len(tx_hashes) != 1:
+        raise SettlementError("x402-reconcile-authorization-not-unique")
+    return tx_hashes[0]
 
 
 def observe_eip3009_settlement(

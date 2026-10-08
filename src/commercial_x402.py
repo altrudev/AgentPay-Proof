@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.commercial import make_commercial_proof
 from src.commercial_execution import (
@@ -282,6 +282,7 @@ class CommercialX402Coordinator:
         facilitator_registry: FacilitatorRegistry,
         facilitator_id: str,
         rpc: JsonRpcClient | None = None,
+        authorization_verifier: Callable[..., dict[str, Any]] | None = None,
     ):
         self.commercial_journal = commercial_journal
         self.x402_journal = x402_journal
@@ -293,6 +294,8 @@ class CommercialX402Coordinator:
         if not self.facilitator_id:
             raise CommercialX402Error("facilitator-id-required")
         self.rpc = rpc or JsonRpcClient(self.live_config.rpc_url)
+        self.authorization_verifier = authorization_verifier
+        self.verification_mode = "local-independent" if authorization_verifier else "facilitator"
 
     def _facilitator_authority(self, requirement: X402Requirement, *, now: int):
         try:
@@ -319,6 +322,8 @@ class CommercialX402Coordinator:
         }
         if runtime != expected:
             raise CommercialX402Error("x402-facilitator-runtime-binding-mismatch")
+        if proof.verify_behavior == "not-used-local-independent" and self.verification_mode != "local-independent":
+            raise CommercialX402Error("x402-facilitator-requires-local-verification")
         return binding, proof, admission
 
     def _validate_context(self, execution_id: str, context: dict[str, Any]) -> tuple[CapabilityRoute, X402Requirement, EIP3009Authorization]:
@@ -528,6 +533,7 @@ class CommercialX402Coordinator:
             "facilitator_verify_url": facilitator_binding.verify_url,
             "facilitator_settle_url": facilitator_binding.settle_url,
             "requires_wallet_signature": True,
+            "verification_mode": self.verification_mode,
         }
         execution_approval_digest = canonical_hash({
             "schema": "agentpay-x402-execution-approval/1",
@@ -674,12 +680,21 @@ class CommercialX402Coordinator:
         if now <= authorization.valid_after or now >= authorization.valid_before:
             raise CommercialX402Error("x402-authorization-not-current")
 
+        if context.get("hio", {}).get("verification_mode") != self.verification_mode:
+            raise CommercialX402Error("x402-verification-mode-changed")
         try:
-            verified = self.facilitator.verify(payload, requirement.wire())
+            if self.authorization_verifier is not None:
+                verified = self.authorization_verifier(
+                    self.rpc, requirement, authorization, signature, now=now
+                )
+            else:
+                verified = self.facilitator.verify(payload, requirement.wire())
             assert_verify_response(verified, payer=authorization.from_address)
         except X402Error as exc:
             raise CommercialX402Error(str(exc)) from exc
         except Exception as exc:
+            if self.authorization_verifier is not None:
+                raise CommercialX402Error("x402-local-verification-unavailable") from exc
             raise CommercialX402Error("x402-facilitator-verify-unavailable") from exc
         context["payment_payload"] = payload
         context["verify_response"] = verified

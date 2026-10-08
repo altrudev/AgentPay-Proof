@@ -21,6 +21,16 @@ from src.execution import ExecutionStateError
 from src.model import Settlement
 from src.observer import IndependentObserver
 from src.protocol import catalog_document, discovery_document
+from src.provider_profile import (
+    AGENTPAY_PROVIDER_ID, AGENTPAY_PROVIDER_KEY_ID, AGENTPAY_PROVIDER_PUBLIC_KEY_B64,
+    public_provider_identity,
+)
+from src.provider_evidence_verifiers import PROVIDER_EVIDENCE_VERIFIERS
+from src.provider_manifest import ed25519_verify
+from src.provider_registry_store import ProviderRegistryStore, ProviderStoreError
+from src.x402_local_verify import local_verify_response
+from src.x402_resource_server import X402CodeAnalysisResource, X402ResourceError, X402ResourceJournal
+from src.xpay_runtime import XPayRuntimeError, build_xpay_runtime
 from src.service import ServiceRequest, resolve_service_id
 from src.verifier import verify
 from src.settlement import JsonRpcClient, SettlementError
@@ -107,6 +117,43 @@ def workflow() -> AgentPayWorkflow:
     )
 
 
+
+
+def x402_code_resource(now: int | None = None) -> X402CodeAnalysisResource:
+    if os.environ.get("AGENTPAY_ENABLE_X402_CODE_ANALYSIS", "").strip() != "1":
+        raise X402ResourceError("x402-public-route-not-enabled")
+    now = int(time.time()) if now is None else int(now)
+    config = live_config()
+    if config is None:
+        raise X402ResourceError("live-mode-not-configured")
+    store = ProviderRegistryStore(
+        os.environ.get("AGENTPAY_PROVIDER_REGISTRY_DB", "agentpay-state/providers.sqlite3")
+    )
+    provider_registry = store.load_registry(
+        now=now,
+        signature_verifier=ed25519_verify,
+        trusted_issuers={AGENTPAY_PROVIDER_KEY_ID: AGENTPAY_PROVIDER_PUBLIC_KEY_B64},
+        evidence_verifiers=PROVIDER_EVIDENCE_VERIFIERS,
+    )
+    # Fail closed before advertising a 402 if the provider is not active.
+    provider_registry.require(
+        AGENTPAY_PROVIDER_ID, "agentpay.code-analysis-v1", now=now
+    )
+    facilitator_registry, facilitator, facilitator_id = build_xpay_runtime(now=now)
+    journal = X402ResourceJournal(
+        os.environ.get("AGENTPAY_X402_RESOURCE_DB", "agentpay-state/x402-resource.sqlite3")
+    )
+    return X402CodeAnalysisResource(
+        provider_registry=provider_registry,
+        provider_id=AGENTPAY_PROVIDER_ID,
+        facilitator_registry=facilitator_registry,
+        facilitator=facilitator,
+        facilitator_id=facilitator_id,
+        rpc=JsonRpcClient(config.rpc_url, timeout_seconds=5),
+        journal=journal,
+        authorization_verifier=local_verify_response,
+    )
+
 def run_demo(amount_atomic: int, document: str, service_id: str = "code-analysis-v1") -> dict:
     outcome = workflow().purchase(
         ServiceRequest(document, resolve_service_id(service_id)), agent_id="agent:judge-demo",
@@ -138,6 +185,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json_headers(self, status: int, payload: dict, headers: dict[str, str]):
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.send_header("cache-control", "no-store")
+        self.send_header("x-content-type-options", "nosniff")
+        for key, value in headers.items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -151,6 +210,8 @@ class Handler(BaseHTTPRequestHandler):
             })
         if path == "/api/catalog":
             return self._json(200, catalog_document())
+        if path == "/api/provider/identity":
+            return self._json(200, public_provider_identity())
         if path == "/api/commercial/demo":
             return self._json(200, release_validation_demo(now=int(time.time())))
         if path == "/api/commercial/prepare-demo":
@@ -266,6 +327,42 @@ class Handler(BaseHTTPRequestHandler):
             if length > 64_000:
                 return self._json(413, {"error": "request-too-large"})
             payload = json.loads(self.rfile.read(length) or b"{}")
+            if path == "/api/x402/code-analysis":
+                document = str(payload.get("document", ""))[:5000]
+                if not document.strip():
+                    return self._json(400, {"error": "document-required"})
+                try:
+                    resource = x402_code_resource(now=int(time.time()))
+                    payment_header = self.headers.get("PAYMENT-SIGNATURE", "").strip()
+                    if not payment_header:
+                        challenge = resource.challenge(document, now=int(time.time()))
+                        return self._json_headers(
+                            402,
+                            {"error": "payment-required"},
+                            {"PAYMENT-REQUIRED": challenge["payment_required_header"]},
+                        )
+                    result = resource.execute(
+                        document, payment_signature_header=payment_header, now=int(time.time())
+                    )
+                    return self._json_headers(
+                        200,
+                        {
+                            "status": result["status"],
+                            "artifact": result["artifact"],
+                            "service_result": result["service_result"],
+                            "receipt": result["receipt"],
+                        },
+                        {"PAYMENT-RESPONSE": result["payment_response_header"]},
+                    )
+                except (ProviderStoreError, XPayRuntimeError, ValueError) as exc:
+                    return self._json(503, {"error": str(exc)})
+                except X402ResourceError as exc:
+                    message = str(exc)
+                    if message == "x402-public-route-not-enabled" or message == "live-mode-not-configured":
+                        return self._json(503, {"error": message})
+                    if "payment-payload" in message or "authorization-invalid" in message:
+                        return self._json(400, {"error": message})
+                    return self._json(402, {"error": message})
             if path == "/api/run":
                 amount = int(payload.get("amount_atomic", 250_000))
                 document = str(payload.get("document", ""))[:5000]

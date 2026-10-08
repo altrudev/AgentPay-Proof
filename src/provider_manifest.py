@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Callable, Mapping
 
 from src.model import canonical_hash
@@ -30,6 +30,7 @@ class ProviderEvidence:
     observed_at: int
     expires_at: int
     digest: str
+    details: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for field_name, code in (
@@ -42,6 +43,8 @@ class ProviderEvidence:
             object.__setattr__(self, field_name, _required(getattr(self, field_name), code))
         if self.observed_at < 0 or self.expires_at <= self.observed_at:
             raise ValueError("provider-evidence-validity-invalid")
+        if not isinstance(self.details, dict):
+            raise ValueError("provider-evidence-details-invalid")
 
     @property
     def proof_digest(self) -> str:
