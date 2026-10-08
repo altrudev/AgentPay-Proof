@@ -51,7 +51,7 @@ class HTTPX402Facilitator:
         self,
         config: FacilitatorRuntimeConfig,
         *,
-        token_provider: BearerTokenProvider,
+        token_provider: BearerTokenProvider | None = None,
     ):
         self.config = config
         self._token_provider = token_provider
@@ -97,14 +97,15 @@ class HTTPX402Facilitator:
     ) -> dict[str, Any]:
         self._assert_transport_identity()
         bound_path = self._bound_path(path)
-        token = self._token_provider(method=method, host=self.host, path=bound_path)
-        if not isinstance(token, str) or not token.strip():
-            raise FacilitatorClientError("facilitator-runtime-token-unavailable")
         headers = {
             "Accept": "application/json",
-            "Authorization": "Bearer " + token.strip(),
             "User-Agent": "AgentPay-Proof/1 Frequency-Governed",
         }
+        if self._token_provider is not None:
+            token = self._token_provider(method=method, host=self.host, path=bound_path)
+            if not isinstance(token, str) or not token.strip():
+                raise FacilitatorClientError("facilitator-runtime-token-unavailable")
+            headers["Authorization"] = "Bearer " + token.strip()
         body = None
         if payload is not None:
             headers["Content-Type"] = "application/json"

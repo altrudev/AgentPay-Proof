@@ -94,6 +94,26 @@ class FacilitatorClientTests(unittest.TestCase):
                 client.supported()
         self.assertEqual(calls, [])
 
+    def test_public_facilitator_sends_no_authorization_header(self):
+        client = HTTPX402Facilitator(
+            FacilitatorRuntimeConfig(
+                facilitator_id="facilitator:public",
+                base_url="https://facilitator.example",
+                tls_spki_sha256=PIN,
+            )
+        )
+        with (
+            patch(
+                "src.facilitator_client._tls_observation",
+                return_value={"tls_spki_sha256": PIN},
+            ),
+            patch("src.facilitator_client.build_opener") as build,
+        ):
+            build.return_value.open.return_value = FakeResponse(b'{"kinds":[]}')
+            client.supported()
+            request = build.return_value.open.call_args.args[0]
+            self.assertIsNone(request.get_header("Authorization"))
+
     def test_missing_token_fails_closed(self):
         client = self.client(lambda **_: "")
         with patch(

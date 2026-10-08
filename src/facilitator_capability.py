@@ -48,6 +48,8 @@ def capability_evidence_from_supported(
     observed_at: int,
     valid_until: int,
     x402_version: int = 2,
+    authenticated: bool = True,
+    access_model: str = "authenticated",
 ) -> FacilitatorCapabilityEvidence:
     kinds = _supported_kinds(response, x402_version=x402_version)
     schemes = tuple(sorted({scheme for scheme, _ in kinds}))
@@ -58,10 +60,11 @@ def capability_evidence_from_supported(
         supported_response_digest=canonical_hash(response),
         schemes=schemes,
         networks=networks,
-        authenticated=True,
+        authenticated=authenticated,
         observer=observer,
         observed_at=observed_at,
         valid_until=valid_until,
+        access_model=access_model,
     )
 
 

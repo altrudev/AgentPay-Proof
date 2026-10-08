@@ -5,7 +5,8 @@ from dataclasses import dataclass, asdict
 import json
 from typing import Any
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from src.model import canonical_hash
 
@@ -29,6 +30,25 @@ class X402ResourceQuoteEvidence:
             "schema": "agentpay-x402-resource-quote-evidence/1",
             **asdict(self),
         })
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise X402ResourceProbeError("x402-resource-probe-redirect")
+
+
+def _origin(url: str) -> tuple[str, str, int]:
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or (parsed.port not in {None, 443})
+    ):
+        raise X402ResourceProbeError("x402-resource-probe-url-invalid")
+    return parsed.scheme, parsed.hostname.lower(), parsed.port or 443
 
 
 def decode_payment_required_header(value: str) -> dict[str, Any]:
@@ -56,6 +76,7 @@ def probe_x402_resource(
     observed_at: int,
     timeout: float = 8.0,
 ) -> X402ResourceQuoteEvidence:
+    expected_origin = _origin(resource_url)
     body = json.dumps(request_body, sort_keys=True, separators=(",", ":")).encode("utf-8")
     request = Request(
         resource_url,
@@ -68,7 +89,8 @@ def probe_x402_resource(
         method="POST",
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        opener = build_opener(HTTPSHandler(), _NoRedirect())
+        with opener.open(request, timeout=timeout) as response:
             status = int(response.status)
             header = response.headers.get("payment-required")
     except HTTPError as exc:
@@ -80,6 +102,11 @@ def probe_x402_resource(
     if status != 402:
         raise X402ResourceProbeError(f"x402-resource-probe-status:{status}")
     payment_required = decode_payment_required_header(header)
+    resource = payment_required.get("resource")
+    if not isinstance(resource, dict) or not isinstance(resource.get("url"), str):
+        raise X402ResourceProbeError("x402-resource-probe-resource-binding-missing")
+    if _origin(resource["url"]) != expected_origin:
+        raise X402ResourceProbeError("x402-resource-probe-resource-origin-mismatch")
     return X402ResourceQuoteEvidence(
         resource_url=resource_url,
         request_digest=canonical_hash(request_body),

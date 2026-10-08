@@ -18,7 +18,7 @@ PAYER = "0x000000000000000000000000000000000000cafe"
 RESOURCE = "https://provider.example/v1/render-verify"
 NOW = 1_800_000_000
 TX = "0x" + "12" * 32
-SIG = "0x" + "11" * 65
+SIG = "0x" + "11" * 32 + "22" * 32 + "1b"
 FACILITATOR_ID = "facilitator:test"
 VERIFY_URL = "https://facilitator.example/verify"
 SETTLE_URL = "https://facilitator.example/settle"
@@ -245,7 +245,7 @@ class CommercialX402Tests(unittest.TestCase):
             if os.path.exists(path):
                 os.unlink(path)
 
-    def coordinator(self, facilitator=None):
+    def coordinator(self, facilitator=None, authorization_verifier=None):
         facilitator = facilitator or FakeFacilitator()
         return CommercialX402Coordinator(
             commercial_journal=self.commercial_journal,
@@ -256,6 +256,7 @@ class CommercialX402Tests(unittest.TestCase):
             facilitator_registry=self.facilitator_registry,
             facilitator_id=FACILITATOR_ID,
             rpc=None,
+            authorization_verifier=authorization_verifier,
         ), facilitator
 
     def prepare_x402(self, coordinator):
@@ -385,6 +386,37 @@ class CommercialX402Tests(unittest.TestCase):
         with self.assertRaisesRegex(CommercialX402Error, "x402-authorization-not-current"):
             coordinator.submit_signature_and_execute(execution_id, signature=SIG, now=expires)
         self.assertEqual(facilitator.calls, [])
+
+    def test_local_independent_verify_never_calls_facilitator_before_settle(self):
+        facilitator = FakeFacilitator()
+        calls = []
+
+        def local_verify(rpc, requirement, authorization, signature, *, now):
+            calls.append((requirement.network, authorization.nonce, now))
+            return {
+                "isValid": True,
+                "payer": authorization.from_address,
+                "verificationSource": "local-independent",
+                "verificationDigest": "local:test",
+            }
+
+        coordinator, _ = self.coordinator(
+            facilitator, authorization_verifier=local_verify
+        )
+        out = self.prepare_x402(coordinator)
+        self.assertEqual(out["hio"]["verification_mode"], "local-independent")
+        coordinator.confirm(
+            out["execution_id"],
+            execution_approval_digest=out["execution_approval_digest"],
+            now=NOW + 2,
+        )
+        coordinator.rpc = FakeRpc(self.x402_journal, out["execution_id"])
+        result = coordinator.submit_signature_and_execute(
+            out["execution_id"], signature=SIG, now=NOW + 3
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(facilitator.calls, ["settle"])
+        self.assertEqual(result["status"], "VERIFIED")
 
     def test_happy_path_verify_resource_settle_observe_and_prove(self):
         facilitator = FakeFacilitator()

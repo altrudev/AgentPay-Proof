@@ -3,6 +3,8 @@ import unittest
 
 from src.x402 import (
     TRANSFER_WITH_AUTHORIZATION_SELECTOR,
+    encode_transfer_with_authorization_calldata,
+    decode_transfer_with_authorization_calldata,
     EIP3009Authorization,
     X402Error,
     X402Requirement,
@@ -106,6 +108,22 @@ class FakeRpc:
 
 
 class X402Tests(unittest.TestCase):
+    def test_transfer_calldata_encoder_matches_observer_decoder(self):
+        req = self.requirement
+        auth = self.authorization
+        sig = "0x" + "11" * 32 + "22" * 32 + "1b"
+        encoded = encode_transfer_with_authorization_calldata(auth, sig)
+        decoded = decode_transfer_with_authorization_calldata(encoded)
+        self.assertEqual(decoded["from"], auth.from_address)
+        self.assertEqual(decoded["to"], auth.to)
+        self.assertEqual(decoded["value"], auth.value)
+        self.assertEqual(decoded["validAfter"], auth.valid_after)
+        self.assertEqual(decoded["validBefore"], auth.valid_before)
+        self.assertEqual(decoded["nonce"], auth.nonce)
+        self.assertEqual(decoded["v"], 27)
+        self.assertEqual(decoded["r"], "0x" + "11" * 32)
+        self.assertEqual(decoded["s"], "0x" + "22" * 32)
+
     def setUp(self):
         self.requirement = select_exact_eip3009_requirement(
             required(), resource_url=RESOURCE, chain_id=8453, asset=TOKEN, pay_to=PAYEE, amount=30000

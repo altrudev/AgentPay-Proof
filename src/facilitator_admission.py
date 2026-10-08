@@ -118,10 +118,10 @@ class FacilitatorProbeEvidence:
         object.__setattr__(self, "observer", _required(self.observer, "facilitator-probe-observer-required"))
         if not self.resolved_addresses:
             raise ValueError("facilitator-probe-dns-empty")
-        if self.verify_unauthenticated_status not in {401, 403}:
-            raise ValueError("facilitator-probe-verify-auth-boundary-unproven")
-        if self.settle_unauthenticated_status not in {401, 403}:
-            raise ValueError("facilitator-probe-settle-auth-boundary-unproven")
+        if self.verify_unauthenticated_status not in {400, 401, 403}:
+            raise ValueError("facilitator-probe-verify-boundary-unproven")
+        if self.settle_unauthenticated_status not in {400, 401, 403}:
+            raise ValueError("facilitator-probe-settle-boundary-unproven")
         if self.observed_at < 0:
             raise ValueError("facilitator-probe-time-invalid")
 
@@ -141,6 +141,7 @@ class FacilitatorCapabilityEvidence:
     observer: str
     observed_at: int
     valid_until: int
+    access_model: str = "authenticated"
 
     def __post_init__(self) -> None:
         _endpoint(self.supported_url, "facilitator-capability-url-invalid")
@@ -148,8 +149,13 @@ class FacilitatorCapabilityEvidence:
         object.__setattr__(self, "networks", _clean(self.networks))
         object.__setattr__(self, "supported_response_digest", _required(self.supported_response_digest, "facilitator-capability-response-digest-required"))
         object.__setattr__(self, "observer", _required(self.observer, "facilitator-capability-observer-required"))
-        if not self.authenticated:
+        object.__setattr__(self, "access_model", _required(self.access_model, "facilitator-capability-access-model-required").lower())
+        if self.access_model not in {"authenticated", "public"}:
+            raise ValueError("facilitator-capability-access-model-invalid")
+        if self.access_model == "authenticated" and not self.authenticated:
             raise ValueError("facilitator-capability-authentication-required")
+        if self.access_model == "public" and self.authenticated:
+            raise ValueError("facilitator-capability-public-auth-contradiction")
         if not self.schemes or not self.networks:
             raise ValueError("facilitator-capability-scope-empty")
         if self.observed_at < 0 or self.valid_until <= self.observed_at:
@@ -254,7 +260,7 @@ def evaluate_facilitator(
         reasons.append("facilitator-proof-dns-mismatch")
     if proof.tls_spki_sha256 not in binding.tls_spki_sha256:
         reasons.append("facilitator-proof-tls-pin-mismatch")
-    if proof.verify_behavior != "verification-only":
+    if proof.verify_behavior not in {"verification-only", "not-used-local-independent"}:
         reasons.append("facilitator-verify-behavior-unproven")
     if proof.settle_behavior != "settlement-only":
         reasons.append("facilitator-settle-behavior-unproven")
