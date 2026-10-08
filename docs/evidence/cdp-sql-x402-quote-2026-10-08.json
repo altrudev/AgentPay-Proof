@@ -1,0 +1,31 @@
+{
+  "digest": "40ab4368a558e083cdef6f57817d31f0df7c4b711e655970a7121c130d7a2881",
+  "observed_at": 1791475451,
+  "observer": "frequency:prometheus-resource-quote",
+  "payment_required": {
+    "accepts": [
+      {
+        "amount": "100000",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "extra": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "maxTimeoutSeconds": 60,
+        "network": "eip155:8453",
+        "payTo": "0x631e240FE781083A5571552cE82036d96B158696",
+        "scheme": "exact"
+      }
+    ],
+    "error": "Payment required",
+    "resource": {
+      "description": "Execute SQL query",
+      "mimeType": "application/json",
+      "url": "/v2/data/query/run"
+    },
+    "x402Version": 2
+  },
+  "payment_required_digest": "cac857556d578725e4f7beaab91098a89ca0713e07e9447dfab974a4d586be63",
+  "request_digest": "33e0292149bee4c83e05e9053598c53fbcb08d61cfcd4939820b62ad36c96c97",
+  "resource_url": "https://x402.cdp.coinbase.com/platform/v2/data/query/run"
+}

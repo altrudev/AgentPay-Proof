@@ -9,6 +9,7 @@ from src.model import canonical_hash
 FACILITATOR_BINDING_SCHEMA = "agentpay-facilitator-binding/1"
 FACILITATOR_TRANSPORT_PROBE_SCHEMA = "agentpay-facilitator-transport-probe/1"
 FACILITATOR_TRANSPORT_PROOF_SCHEMA = "agentpay-facilitator-transport-proof/2"
+FACILITATOR_CAPABILITY_EVIDENCE_SCHEMA = "agentpay-facilitator-capability-evidence/1"
 FACILITATOR_ADMISSION_SCHEMA = "agentpay-facilitator-admission/1"
 
 
@@ -130,6 +131,36 @@ class FacilitatorProbeEvidence:
 
 
 @dataclass(frozen=True)
+class FacilitatorCapabilityEvidence:
+    facilitator_id: str
+    supported_url: str
+    supported_response_digest: str
+    schemes: tuple[str, ...]
+    networks: tuple[str, ...]
+    authenticated: bool
+    observer: str
+    observed_at: int
+    valid_until: int
+
+    def __post_init__(self) -> None:
+        _endpoint(self.supported_url, "facilitator-capability-url-invalid")
+        object.__setattr__(self, "schemes", _clean(self.schemes))
+        object.__setattr__(self, "networks", _clean(self.networks))
+        object.__setattr__(self, "supported_response_digest", _required(self.supported_response_digest, "facilitator-capability-response-digest-required"))
+        object.__setattr__(self, "observer", _required(self.observer, "facilitator-capability-observer-required"))
+        if not self.authenticated:
+            raise ValueError("facilitator-capability-authentication-required")
+        if not self.schemes or not self.networks:
+            raise ValueError("facilitator-capability-scope-empty")
+        if self.observed_at < 0 or self.valid_until <= self.observed_at:
+            raise ValueError("facilitator-capability-validity-invalid")
+
+    @property
+    def digest(self) -> str:
+        return canonical_hash({"schema": FACILITATOR_CAPABILITY_EVIDENCE_SCHEMA, **asdict(self)})
+
+
+@dataclass(frozen=True)
 class FacilitatorTransportProof:
     facilitator_id: str
     verify_url: str
@@ -166,6 +197,7 @@ class FacilitatorAdmission:
     facilitator_id: str
     binding_digest: str
     transport_proof_digest: str
+    capability_evidence_digest: str
     decision: str
     reasons: tuple[str, ...]
     admitted_at: int
@@ -180,11 +212,26 @@ def evaluate_facilitator(
     binding: FacilitatorBinding,
     proof: FacilitatorTransportProof,
     evidence: FacilitatorProbeEvidence,
+    capability: FacilitatorCapabilityEvidence,
     *,
     now: int,
 ) -> FacilitatorAdmission:
     reasons: list[str] = []
     host = urlsplit(binding.verify_url).hostname.lower()
+
+    if capability.facilitator_id != binding.facilitator_id:
+        reasons.append("facilitator-capability-identity-mismatch")
+    expected_supported_url = binding.verify_url.rsplit("/", 1)[0] + "/supported"
+    if capability.supported_url != expected_supported_url:
+        reasons.append("facilitator-capability-endpoint-mismatch")
+    if now > capability.valid_until:
+        reasons.append("facilitator-capability-evidence-expired")
+    for scheme in binding.schemes:
+        if scheme not in capability.schemes:
+            reasons.append("facilitator-capability-scheme-unproven")
+    for network in binding.networks:
+        if network not in capability.networks:
+            reasons.append("facilitator-capability-network-unproven")
 
     if proof.probe_evidence_digest != evidence.digest:
         reasons.append("facilitator-probe-evidence-mismatch")
@@ -224,10 +271,11 @@ def evaluate_facilitator(
         facilitator_id=binding.facilitator_id,
         binding_digest=binding.digest,
         transport_proof_digest=proof.digest,
+        capability_evidence_digest=capability.digest,
         decision="ADMIT" if not reasons else "DENY",
         reasons=tuple(reasons) or ("facilitator-binding-and-transport-satisfy-policy",),
         admitted_at=now,
-        valid_until=min(binding.valid_until, proof.valid_until),
+        valid_until=min(binding.valid_until, proof.valid_until, capability.valid_until),
     )
 
 
@@ -236,6 +284,7 @@ class FacilitatorRegistry:
         self._bindings: dict[str, FacilitatorBinding] = {}
         self._proofs: dict[str, FacilitatorTransportProof] = {}
         self._evidence: dict[str, FacilitatorProbeEvidence] = {}
+        self._capabilities: dict[str, FacilitatorCapabilityEvidence] = {}
         self._admissions: dict[str, FacilitatorAdmission] = {}
 
     def admit(
@@ -243,10 +292,11 @@ class FacilitatorRegistry:
         binding: FacilitatorBinding,
         proof: FacilitatorTransportProof,
         evidence: FacilitatorProbeEvidence,
+        capability: FacilitatorCapabilityEvidence,
         *,
         now: int,
     ) -> FacilitatorAdmission:
-        admission = evaluate_facilitator(binding, proof, evidence, now=now)
+        admission = evaluate_facilitator(binding, proof, evidence, capability, now=now)
         if admission.decision != "ADMIT":
             return admission
         current = self._bindings.get(binding.facilitator_id)
@@ -255,6 +305,7 @@ class FacilitatorRegistry:
         self._bindings[binding.facilitator_id] = binding
         self._proofs[binding.facilitator_id] = proof
         self._evidence[binding.facilitator_id] = evidence
+        self._capabilities[binding.facilitator_id] = capability
         self._admissions[binding.facilitator_id] = admission
         return admission
 
@@ -264,6 +315,7 @@ class FacilitatorRegistry:
         self._bindings.pop(facilitator_id, None)
         self._proofs.pop(facilitator_id, None)
         self._evidence.pop(facilitator_id, None)
+        self._capabilities.pop(facilitator_id, None)
         self._admissions.pop(facilitator_id, None)
 
     def require(
@@ -278,13 +330,16 @@ class FacilitatorRegistry:
         binding = self._bindings.get(facilitator_id)
         proof = self._proofs.get(facilitator_id)
         evidence = self._evidence.get(facilitator_id)
+        capability = self._capabilities.get(facilitator_id)
         admission = self._admissions.get(facilitator_id)
-        if binding is None or proof is None or evidence is None or admission is None or admission.decision != "ADMIT":
+        if binding is None or proof is None or evidence is None or capability is None or admission is None or admission.decision != "ADMIT":
             raise ValueError("facilitator-not-admitted")
         if admission.binding_digest != binding.digest or admission.transport_proof_digest != proof.digest:
             raise ValueError("facilitator-admission-binding-mismatch")
         if proof.probe_evidence_digest != evidence.digest:
             raise ValueError("facilitator-probe-evidence-mismatch")
+        if admission.capability_evidence_digest != capability.digest:
+            raise ValueError("facilitator-capability-evidence-mismatch")
         if now > admission.valid_until:
             raise ValueError("facilitator-admission-expired")
         if scheme.lower() not in binding.schemes:

@@ -2,6 +2,7 @@ import unittest
 
 from src.facilitator_admission import (
     FacilitatorBinding,
+    FacilitatorCapabilityEvidence,
     FacilitatorProbeEvidence,
     FacilitatorRegistry,
     FacilitatorTransportProof,
@@ -50,6 +51,22 @@ def evidence(**overrides):
     return FacilitatorProbeEvidence(**values)
 
 
+def capability(**overrides):
+    values = {
+        "facilitator_id": "facilitator:test",
+        "supported_url": "https://facilitator.example/supported",
+        "supported_response_digest": "sha256:supported",
+        "schemes": ("exact",),
+        "networks": ("eip155:8453",),
+        "authenticated": True,
+        "observer": "frequency:test-observer",
+        "observed_at": NOW - 20,
+        "valid_until": NOW + 600,
+    }
+    values.update(overrides)
+    return FacilitatorCapabilityEvidence(**values)
+
+
 def proof(**overrides):
     values = {
         "facilitator_id": "facilitator:test",
@@ -72,7 +89,7 @@ def proof(**overrides):
 class FacilitatorAdmissionTests(unittest.TestCase):
     def test_admits_exact_bound_transport(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(), evidence(), now=NOW)
+        admission = registry.admit(binding(), proof(), evidence(), capability(), now=NOW)
         self.assertEqual(admission.decision, "ADMIT")
         required = registry.require(
             "facilitator:test",
@@ -86,19 +103,19 @@ class FacilitatorAdmissionTests(unittest.TestCase):
     def test_probe_evidence_substitution_is_denied(self):
         registry = FacilitatorRegistry()
         changed = evidence(resolved_addresses=("203.0.113.11",))
-        admission = registry.admit(binding(), proof(), changed, now=NOW)
+        admission = registry.admit(binding(), proof(), changed, capability(), now=NOW)
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-probe-evidence-mismatch", admission.reasons)
 
     def test_dns_substitution_is_denied(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(resolved_host="evil.example"), evidence(), now=NOW)
+        admission = registry.admit(binding(), proof(resolved_host="evil.example"), evidence(), capability(), now=NOW)
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-proof-dns-mismatch", admission.reasons)
 
     def test_tls_substitution_is_denied(self):
         registry = FacilitatorRegistry()
-        admission = registry.admit(binding(), proof(tls_spki_sha256="sha256:other"), evidence(), now=NOW)
+        admission = registry.admit(binding(), proof(tls_spki_sha256="sha256:other"), evidence(), capability(), now=NOW)
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-proof-tls-pin-mismatch", admission.reasons)
 
@@ -108,14 +125,25 @@ class FacilitatorAdmissionTests(unittest.TestCase):
             binding(),
             proof(verify_behavior="verification-and-settlement"),
             evidence(),
+            capability(),
             now=NOW,
         )
         self.assertEqual(admission.decision, "DENY")
         self.assertIn("facilitator-verify-behavior-unproven", admission.reasons)
 
+    def test_capability_scope_substitution_is_denied(self):
+        registry = FacilitatorRegistry()
+        admission = registry.admit(
+            binding(), proof(), evidence(),
+            capability(networks=("eip155:84532",)),
+            now=NOW,
+        )
+        self.assertEqual(admission.decision, "DENY")
+        self.assertIn("facilitator-capability-network-unproven", admission.reasons)
+
     def test_payment_scope_mismatch_fails_closed(self):
         registry = FacilitatorRegistry()
-        self.assertEqual(registry.admit(binding(), proof(), evidence(), now=NOW).decision, "ADMIT")
+        self.assertEqual(registry.admit(binding(), proof(), evidence(), capability(), now=NOW).decision, "ADMIT")
         with self.assertRaisesRegex(ValueError, "facilitator-network-not-admitted"):
             registry.require(
                 "facilitator:test",

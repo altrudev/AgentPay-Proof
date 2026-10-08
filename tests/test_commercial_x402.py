@@ -7,7 +7,7 @@ from src.commercial_demo import release_validation_objects
 from src.commercial_execution import CommercialCoordinator, CommercialExecutionJournal
 from src.commercial_x402 import CommercialX402Coordinator, CommercialX402Error, X402ExecutionJournal
 from src.live import LiveConfig
-from src.facilitator_admission import FacilitatorBinding, FacilitatorProbeEvidence, FacilitatorRegistry, FacilitatorTransportProof
+from src.facilitator_admission import FacilitatorBinding, FacilitatorCapabilityEvidence, FacilitatorProbeEvidence, FacilitatorRegistry, FacilitatorTransportProof
 from src.provider_admission import ProviderBinding, ProviderRegistry
 from src.settlement import TRANSFER_TOPIC
 from src.x402 import AUTHORIZATION_USED_TOPIC, EIP3009Authorization, TRANSFER_WITH_AUTHORIZATION_SELECTOR
@@ -119,8 +119,19 @@ def facilitator_registry():
         observed_at=NOW - 30,
         valid_until=NOW + 600,
     )
+    capability = FacilitatorCapabilityEvidence(
+        facilitator_id=FACILITATOR_ID,
+        supported_url="https://facilitator.example/supported",
+        supported_response_digest="sha256:supported",
+        schemes=("exact",),
+        networks=("eip155:8453",),
+        authenticated=True,
+        observer="frequency:test-observer",
+        observed_at=NOW - 20,
+        valid_until=NOW + 600,
+    )
     registry = FacilitatorRegistry()
-    assert registry.admit(binding, proof, evidence, now=NOW).decision == "ADMIT"
+    assert registry.admit(binding, proof, evidence, capability, now=NOW).decision == "ADMIT"
     return registry
 
 
